@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 import asyncio
 import random
@@ -8,9 +7,6 @@ from telegram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
-# ============================
-# НАЛАШТУВАННЯ
-# ============================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "YOUR_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@VartaFinance")
@@ -18,77 +14,81 @@ SCHEDULE_DAYS = "0,2,4"
 SCHEDULE_HOUR = 10
 SCHEDULE_MINUTE = 0
 TIMEZONE = "Europe/Kiev"
-# ============================
-SYSTEM_PROMPT = """Ти — контент-менеджер для Telegram-каналу @VartaFinance фінансового консул
-Вона спеціалізується на страхуванні та пенсійному плануванні, працює зі страховою компанією G
-ПРАВИЛА ПОСТІВ:
-- Мова: виключно українська, без суржику
-- Тон: дружній і теплий, як порада від близької людини
-- Довжина: 150-280 слів (оптимально для Telegram)
-- Обов'язково згадувати реальні норми законодавства України (назва закону, номер статті або н
-- Не писати загальні фрази — тільки конкретика
-- Закінчення: або запитання до читачів, або м'який CTA (написати в особисті / записатись на к
-- Використовувати емодзі органічно (3-6 на пост), не спамити ними
-- НЕ писати хештеги
-- Підпис не потрібен"""
+SYSTEM_PROMPT = (
+"Ty — kontent-menedzher dlya Telegram-kanalu @VartaFinance finansovoho konsultanta Oksany
+"Vona spetsializuyetsya na strakhovanni ta pensiynomu planuvanni, pratsyuye zi strakhovoy
+"PRAVYLA POSTIV: "
+"Mova: vyklyuchno ukrayinska, bez surzhyku. "
+"Ton: druzhni i tyoplyy, yak porada vid blyzkoyi lyudyny. "
+"Dovzhyna: 150-280 sliv (optymalno dlya Telegram). "
+"Obovyazkovo zgaduvaty realni normy zakonodavstva Ukrayiny (nazva zakonu, nomer statti ab
+"Ne pysaty zahalni frazy — tilky konkretyka. "
+"Zakinchennya: abo zapytannya do chytachiv, abo myakyi CTA (napysaty v osobysti / zapysat
+"Vykorystovuvaty emodzhi orhanichno (3-6 na post), ne spamyty nymy. "
+"NE pysaty kheshtehy. Pidpys ne potriben."
+)
+TOPIC_PENSION = (
+"Napyshi osvitniy post pro pensiy ne nakopychennya v Ukrayini. "
+"Temy: nederzhavni pensiyni fondy (NPF), indyvidualni pensiyni rakhunky, prohramy GRAWE U
+"Zakonodavstvo: Zakon N 1057-IV Pro nederzhavne pensiy ne zabezpechennya, "
+"st. 166.3.3 PKU (podatkova znyzhka na vnesky do NPF). "
+"Aktsent: serednya pensiya v Ukrayini 3500-4000 hrn menshe prozhytkovoho minimumu. "
+"Osobysti nakopychennya yedynyy vykhid. "
+"Plavno pidvody do dumky shcho treba pochynaty nakopychuvaty samostiyno."
+)
+TOPIC_STAZH = (
+"Napyshi post pro trudovyy stazh v Ukrayini — shcho zarakhovuyetsya, yak pidtverdzhuyetsy
+"Zakonodavstvo: KZpP Ukrayiny, Zakon N 1058-IV st. 24-26 (strakhovyy stazh), "
+"osoblyvosti dlya FOP cherez YeSV. "
+"Aktsent: bez minimalnoho strakhovoho stazhu 15 rokiv pensiya ne pryznachayetsya vzahali.
+"Korysna porada dlya samozaynyatykh, FOP, moryakiv, IT-spetsialistiv."
+)
+TOPIC_SOLIDARNA = (
+"Napyshi zasterezhlyvyy post pro solidarnu derzhavnu pensiyu v Ukrayini. "
+"Zakonodavstvo: Zakon N 1058-IV, st. 27 (umovy pryznachennya pensiyi), byudzhet PFU. "
+"Fakty: demohrafichna kryza — na 10 pensivoneriv lyshe 6 platnykiv YeSV. Systema defitsyt
+"Realna pensiya pokryvaye blyzko 30 vidsotky vid serednoyi zarplaty. "
+"Pidvody do vysnovku: derzhava ne vstygne, treba dbaty samomu."
+)
+TOPIC_ETRУДОВА = (
+"Napyshi korysnyy post pro elektronnu trudovu knyzhku e-trudovu v Ukrayini. "
+"Zakonodavstvo: Zakon N 1217-IX vid 05.02.2021, postanova KMU N 509 vid 27.05.2021. "
+"Yak pereviryt sviy stazh v Diyi abo na sayti PFU. "
+"Shcho robyty yakshcho ye pomylky v zapysakh — praktychna porada."
+)
+TOPIC_DMS = (
+"Napyshi post pro dobrovilne medychne strakhuvannya DMS v Ukrayini. "
+"Zakonodavstvo: Zakon Pro strakhuvannya N 85/96-VR, st. 142.1 PKU pilhy dlya robotodavtsi
+"Aktsent: GRAWE Ukraine — avstriyskyy kapital, ponad 25 rokiv na rynku, litsenziya "V umovakh voyennoho stanu dostup do yakisnoy medytsyny — pytannya zakhystu simyi."
+NBU. "
+)
+TOPIC_LIFE = (
+"Napyshi post pro strakhuvannya zhyttya v Ukrayini yak instrument zakhystu i nakopychenny
+"Zakonodavstvo: Zakon Pro strakhuvannya N 85/96-VR, st. 166.3.5 PKU "
+"podatkova znyzhka do 2690 hrn na misyats. "
+"GRAWE Ukraine — poyednuye zakhyst plus nakopychennya plus podatkovu znyzhku. "
+"Osoblivo aktualno dlya FOP, moryakiv, IT — u koho nemaye sotsialnykh harantiy vid derzha
+)
+TOPIC_KZPP = (
+"Napyshi informatsiynyy post pro zminy v trudovomu zakonodavstvi Ukrayiny. "
+"Zakonodavstvo: KZpP Ukrayiny, Zakon N 2136-IX vid 15.03.2022 prats v umovakh voyennoho s
+"Yak zminy vplyvayut na strakhovyy stazh i maybutniu pensiyu. "
+"Korysno znaty kozhnomu nayanomu pratsivnyku i FOP."
+)
 TOPICS = [
-{
-"name": "pension_accumulation",
-"prompt": """Напиши освітній пост про пенсійне накопичення в Україні.
-Теми: недержавні пенсійні фонди (НПФ), індивідуальні пенсійні рахунки, програми GRAWE Ukraine
-Законодавство: Закон N 1057-IV "Про недержавне пенсійне забезпечення", ст. 166.3.3 ПКУ (подат
-Акцент: середня пенсія в Україні 3500-4000 грн — менше прожиткового мінімуму. Особисті Плавно підводь до думки що треба починати накопичувати самостійно."""
-накопи
-},
-{
-"name": "work_experience",
-"prompt": """Напиши пост про трудовий стаж в Україні — що зараховується, як підтвердж
-Законодавство: КЗпП України, Закон N 1058-IV ст. 24-26 (страховий стаж), особливості для ФОП
-Акцент: без мінімального страхового стажу (15 років) пенсія не призначається взагалі.
-Корисна порада для самозайнятих, ФОП, моряків, IT-спеціалістів."""
-},
-{
-"name": "solidarity_pension",
-"prompt": """Напиши застережливий пост про солідарну (державну) пенсію в Україні.
-Законодавство: Закон N 1058-IV, ст. 27 (умови призначення пенсії), бюджет ПФУ.
-Факти: демографічна криза — на 10 пенсіонерів лише 6 платників ЄСВ. Система дефіцитна.
-Реальна пенсія покриває близько 30% від середньої зарплати.
-Підводь до висновку: держава не встигне, треба дбати самому."""
-},
-{
-"name": "digital_work_book",
-"prompt": """Напиши корисний пост про електронну трудову книжку (е-трудову) в Україні
-Законодавство: Закон N 1217-IX від 05.02.2021, постанова КМУ N 509 від 27.05.2021.
-Як перевірити свій стаж в Дії або на сайті ПФУ.
-Що робити якщо є помилки в записах — практична порада."""
-},
-{
-"name": "health_insurance",
-"prompt": """Напиши пост про добровільне медичне страхування (ДМС) в Україні.
-Законодавство: Закон "Про страхування" N 85/96-ВР, ст. 142.1 ПКУ (пільги для роботодавців щод
-Акцент: GRAWE Ukraine — австрійський капітал, понад 25 років на ринку, ліцензія НБУ.
-В умовах воєнного стану доступ до якісної медицини — питання захисту сім'ї."""
-},
-{
-"name": "life_insurance",
-"prompt": """Напиши пост про страхування життя в Україні як інструмент захисту і нако
-Законодавство: Закон "Про страхування" N 85/96-ВР, ст. 166.3.5 ПКУ (податкова знижка до 2690
-GRAWE Ukraine — поєднує захист + накопичення + податкову знижку.
-Особливо актуально для ФОП, моряків, IT — у кого немає соціальних гарантій від держави."""
-},
-{
-"name": "labor_code_changes",
-"prompt": """Напиши інформаційний пост про зміни в трудовому законодавстві України.
-Законодавство: КЗпП України, Закон N 2136-IX від 15.03.2022 (праця в умовах воєнного стану),
-Як зміни впливають на страховий стаж і майбутню пенсію.
-Корисно знати кожному найманому працівнику і ФОП."""
-},
+{"name": "pension", "prompt": TOPIC_PENSION},
+{"name": "stazh", "prompt": TOPIC_STAZH},
+{"name": "solidarna", "prompt": TOPIC_SOLIDARNA},
+{"name": "etrudova", "prompt": TOPIC_ETRУДОВА},
+{"name": "dms", "prompt": TOPIC_DMS},
+{"name": "life", "prompt": TOPIC_LIFE},
+{"name": "kzpp", "prompt": TOPIC_KZPP},
 ]
-def get_next_topic(day_of_week: int) -> dict:
+def get_next_topic(day_of_week):
 day_map = {0: [0, 4, 5], 2: [1, 2, 3], 4: [4, 5, 6]}
-topic_indices = day_map.get(day_of_week, list(range(len(TOPICS))))
-return random.choice([TOPICS[i] for i in topic_indices])
-async def generate_post(topic: dict) -> str:
+indices = day_map.get(day_of_week, list(range(len(TOPICS))))
+return random.choice([TOPICS[i] for i in indices])
+async def generate_post(topic):
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 message = client.messages.create(
 model="claude-opus-4-5",
@@ -102,9 +102,9 @@ bot = Bot(token=TELEGRAM_TOKEN)
 kyiv_tz = pytz.timezone(TIMEZONE)
 now = datetime.now(kyiv_tz)
 day_of_week = now.weekday()
-print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Generating post...")
+print("Generating post for topic...")
 topic = get_next_topic(day_of_week)
-print(f"Topic: {topic['name']}")
+print("Topic: " + topic["name"])
 try:
 post_text = await generate_post(topic)
 await bot.send_message(
@@ -112,14 +112,13 @@ chat_id=CHANNEL_ID,
 text=post_text,
 parse_mode=None
 )
-print(f"OK! Post published! {len(post_text)} chars")
+print("OK! Post published! Chars: " + str(len(post_text)))
 except Exception as e:
-print(f"ERROR: {repr(e)}")
+print("ERROR: " + str(e))
 async def main():
 print("VartaFinance Bot started!")
-print(f"Channel: {CHANNEL_ID}")
-print(f"Schedule: days {SCHEDULE_DAYS} at {SCHEDULE_HOUR:02d}:{SCHEDULE_MINUTE:02d} Kyiv"
-print("=" * 40)
+print("Channel: " + CHANNEL_ID)
+print("Schedule: days " + SCHEDULE_DAYS + " at " + str(SCHEDULE_HOUR) + ":00 Kyiv")
 scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 scheduler.add_job(
 publish_post,
