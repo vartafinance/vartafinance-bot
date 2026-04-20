@@ -72,5 +72,5 @@ async def main():
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
 
-if name == "__main__":
+if __name__ == "__main__":
     asyncio.run(main())
