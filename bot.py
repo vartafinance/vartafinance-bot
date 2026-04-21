@@ -142,9 +142,9 @@ async def publish_post():
             image_url = await generate_image(topic["image_prompt"])
             await bot.send_photo(
                 chat_id=CHANNEL_ID,
-                photo=image_url,
-                caption=text
+                photo=image_url
             )
+            await bot.send_message(chat_id=CHANNEL_ID, text=text)
             print("Posted with image OK")
         else:
             await bot.send_message(chat_id=CHANNEL_ID, text=text)
