@@ -7,7 +7,7 @@ import anthropic
 import openai
 import requests
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -47,17 +47,17 @@ SYSTEM_PROMPT = """Ти — фінансовий консультант Окса
 TOPICS = [
     {"name": "pension", "day": [0],
      "text": "Напиши пост про пенсійне накопичення в Україні. Згадай Закон 1057-IV про НПФ та статтю 166.3.3 ПКУ. Середня пенсія 3500 грн — це виживання. GRAWE Ukraine допомагає накопичувати.",
-     "image_prompt": "A real photo of a happy retired couple in their 60s sitting together at home, warm afternoon sunlight through window, candid moment, shot on Sony A7III 85mm f1.4, shallow depth of field, photojournalism style, no text, no watermark",
+     "image_prompt": "A real photo of a happy Slavic Eastern European retired couple in their 60s sitting together at home, warm afternoon sunlight through window, candid moment, shot on Sony A7III 85mm f1.4, shallow depth of field, photojournalism style, no text, no watermark",
      "poll_question": "Чи думали ви про пенсійні накопичення?",
      "poll_options": ["Так, вже накопичую", "Думала але не почала", "Ще ні, але планую", "Пенсія? Ще далеко"]},
     {"name": "stazh", "day": [2],
      "text": "Напиши пост про трудовий стаж в Україні. Згадай КЗпП та Закон 1058-IV статті 24-26. Без 15 років стажу пенсія не призначається. Для ФОП, моряків, IT.",
-     "image_prompt": "A real photo of a confident woman in her 30s working at a desk in a modern office, natural window light, candid documentary style, shot on Sony A7III 50mm, sharp focus, no text, no watermark",
+     "image_prompt": "A real photo of a confident Slavic Eastern European woman in her 30s working at a desk in a modern office, natural window light, candid documentary style, shot on Sony A7III 50mm, sharp focus, no text, no watermark",
      "poll_question": "Чи знаєте скільки років стажу у вас зараз?",
      "poll_options": ["Так, знаю точно", "Приблизно знаю", "Не знаю", "Піду перевіряти"]},
     {"name": "solidarna", "day": [2],
      "text": "Напиши пост про солідарну державну пенсію. Згадай Закон 1058-IV статтю 27. На 10 пенсіонерів 6 платників ЄСВ, пенсія лише 30% зарплати.",
-     "image_prompt": "A real photo of a thoughtful woman in her 40s sitting at kitchen table with notebook and calculator, warm natural light, documentary photography, shot on Sony A7III, no text, no watermark",
+     "image_prompt": "A real photo of a thoughtful Slavic Eastern European woman in her 40s sitting at kitchen table with notebook and calculator, warm natural light, documentary photography, shot on Sony A7III, no text, no watermark",
      "poll_question": "На яку пенсію ви розраховуєте?",
      "poll_options": ["Тільки державна", "Державна + НПФ", "Тільки власні заощадження", "Ще не думала"]},
     {"name": "etrudova", "day": [2],
@@ -67,17 +67,17 @@ TOPICS = [
      "poll_options": ["Так, все гаразд", "Знайшла помилки", "Ще ні, піду перевірю", "Не знаю як"]},
     {"name": "dms", "day": [4],
      "text": "Напиши пост про добровільне медичне страхування. Згадай Закон 85/96-ВР та статтю 142.1 ПКУ. GRAWE Ukraine — 25 років на ринку.",
-     "image_prompt": "A real photo of a happy family with a friendly doctor in a bright modern clinic, genuine smiles, documentary style, shot on Sony A7III, warm light, no text, no watermark",
+     "image_prompt": "A real photo of a happy Slavic Eastern European family with a friendly doctor in a bright modern clinic, genuine smiles, documentary style, shot on Sony A7III, warm light, no text, no watermark",
      "poll_question": "Чи має ваша сім'я ДМС?",
      "poll_options": ["Так, має", "Тільки я маю", "Ні, але хочу оформити", "Ні, не планую"]},
     {"name": "life", "day": [4],
      "text": "Напиши пост про страхування життя. Згадай Закон 85/96-ВР та статтю 166.3.5 ПКУ — знижка до 2690 грн на місяць. GRAWE: захист і накопичення.",
-     "image_prompt": "A real photo of a happy family of four in a sunny park, parents and children laughing together, golden hour light, candid documentary photography, shot on Sony A7III 85mm, no text, no watermark",
+     "image_prompt": "A real photo of a happy Slavic Eastern European family of four in a sunny park, parents and children laughing together, golden hour light, candid documentary photography, shot on Sony A7III 85mm, no text, no watermark",
      "poll_question": "Чи є у вас страхування життя?",
      "poll_options": ["Так, вже оформила", "Розглядаю варіант", "Ще ні, цікаво дізнатись", "Ні, не потрібно"]},
     {"name": "kzpp", "day": [0],
      "text": "Напиши пост про зміни в КЗпП. Згадай Закон 2136-IX від 2022 та Закон 3720-IX. Як впливає на стаж і пенсію.",
-     "image_prompt": "A real photo of a professional Ukrainian woman reading documents at a modern office desk, confident expression, natural window light, documentary style, shot on Sony A7III, no text, no watermark",
+     "image_prompt": "A real photo of a professional Ukrainian Slavic woman reading documents at a modern office desk, confident expression, natural window light, documentary style, shot on Sony A7III, no text, no watermark",
      "poll_question": "Чи слідкуєте за змінами трудового законодавства?",
      "poll_options": ["Так, постійно", "Інколи читаю", "Ні, не встигаю", "Мені розповів консультант"]},
 ]
@@ -190,10 +190,12 @@ async def publish_post():
             photo_url = await generate_photo(topic["image_prompt"])
             image_buf = create_varta_image(photo_url)
             await bot.send_photo(chat_id=CHANNEL_ID, photo=image_buf)
-            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown")
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
+            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
             print("Posted with image OK")
         else:
-            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown")
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
+            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
             await bot.send_poll(
                 chat_id=CHANNEL_ID,
                 question=topic["poll_question"],
