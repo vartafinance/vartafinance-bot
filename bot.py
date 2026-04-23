@@ -46,17 +46,17 @@ SYSTEM_PROMPT = """Ти — фінансовий консультант Окса
 TOPICS = [
     {"name": "pension", "day": [0],
      "text": "Напиши пост про пенсійне накопичення в Україні. Згадай Закон 1057-IV про НПФ та статтю 166.3.3 ПКУ. Середня пенсія 3500 грн — це виживання. GRAWE Ukraine допомагає накопичувати.",
-     "image_prompt": "Happy smiling retired couple enjoying life at home, warm sunlight, positive mood, realistic photo, no text no writing",
+     "image_prompt": "Happy smiling retired couple enjoying life at home, warm sunlight, positive mood, photorealistic, shot on Canon 5D, natural lighting, cinematic, ultra detailed, no text",
      "poll_question": "Чи думали ви про пенсійні накопичення?",
      "poll_options": ["Так, вже накопичую", "Думала але не почала", "Ще ні, але планую", "Пенсія? Ще далеко"]},
     {"name": "stazh", "day": [2],
      "text": "Напиши пост про трудовий стаж в Україні. Згадай КЗпП та Закон 1058-IV статті 24-26. Без 15 років стажу пенсія не призначається. Для ФОП, моряків, IT.",
-     "image_prompt": "Confident professional person working at modern bright office, positive atmosphere, realistic photo, no text no writing",
+     "image_prompt": "Confident professional person working at modern bright office, positive atmosphere, photorealistic, shot on Canon 5D, natural lighting, cinematic, ultra detailed, no text",
      "poll_question": "Чи знаєте скільки років стажу у вас зараз?",
      "poll_options": ["Так, знаю точно", "Приблизно знаю", "Не знаю", "Піду перевіряти"]},
     {"name": "solidarna", "day": [2],
      "text": "Напиши пост про солідарну державну пенсію. Згадай Закон 1058-IV статтю 27. На 10 пенсіонерів 6 платників ЄСВ, пенсія лише 30% зарплати.",
-     "image_prompt": "Thoughtful woman planning finances at home, calculator notebook, natural light, realistic photo, no text no writing",
+     "image_prompt": "Thoughtful woman planning finances at home, calculator notebook, natural light, photorealistic, shot on Canon 5D, natural lighting, cinematic, ultra detailed, no text",
      "poll_question": "На яку пенсію ви розраховуєте?",
      "poll_options": ["Тільки державна", "Державна + НПФ", "Тільки власні заощадження", "Ще не думала"]},
     {"name": "etrudova", "day": [2],
@@ -66,17 +66,17 @@ TOPICS = [
      "poll_options": ["Так, все гаразд", "Знайшла помилки", "Ще ні, піду перевірю", "Не знаю як"]},
     {"name": "dms", "day": [4],
      "text": "Напиши пост про добровільне медичне страхування. Згадай Закон 85/96-ВР та статтю 142.1 ПКУ. GRAWE Ukraine — 25 років на ринку.",
-     "image_prompt": "Happy healthy family with doctor in bright clinic, warm realistic photo, no text no writing",
+     "image_prompt": "Happy healthy family with doctor in bright clinic, warm photorealistic, shot on Canon 5D, natural lighting, cinematic, ultra detailed, no text",
      "poll_question": "Чи має ваша сім'я ДМС?",
      "poll_options": ["Так, має", "Тільки я маю", "Ні, але хочу оформити", "Ні, не планую"]},
     {"name": "life", "day": [4],
      "text": "Напиши пост про страхування життя. Згадай Закон 85/96-ВР та статтю 166.3.5 ПКУ — знижка до 2690 грн на місяць. GRAWE: захист і накопичення.",
-     "image_prompt": "Happy family outdoors in park, sunny day, love and security, realistic photo, no text no writing",
+     "image_prompt": "Happy family outdoors in park, sunny day, love and security, photorealistic, shot on Canon 5D, natural lighting, cinematic, ultra detailed, no text",
      "poll_question": "Чи є у вас страхування життя?",
      "poll_options": ["Так, вже оформила", "Розглядаю варіант", "Ще ні, цікаво дізнатись", "Ні, не потрібно"]},
     {"name": "kzpp", "day": [0],
      "text": "Напиши пост про зміни в КЗпП. Згадай Закон 2136-IX від 2022 та Закон 3720-IX. Як впливає на стаж і пенсію.",
-     "image_prompt": "Professional woman reading documents at desk, modern office, confident, realistic photo, no text no writing",
+     "image_prompt": "Professional woman reading documents at desk, modern office, confident, photorealistic, shot on Canon 5D, natural lighting, cinematic, ultra detailed, no text",
      "poll_question": "Чи слідкуєте за змінами трудового законодавства?",
      "poll_options": ["Так, постійно", "Інколи читаю", "Ні, не встигаю", "Мені розповів консультант"]},
 ]
@@ -179,10 +179,10 @@ async def publish_post():
             photo_url = await generate_photo(topic["image_prompt"])
             image_buf = create_varta_image(photo_url)
             await bot.send_photo(chat_id=CHANNEL_ID, photo=image_buf)
-            await bot.send_message(chat_id=CHANNEL_ID, text=text)
+            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown")
             print("Posted with image OK")
         else:
-            await bot.send_message(chat_id=CHANNEL_ID, text=text)
+            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown")
             await bot.send_poll(
                 chat_id=CHANNEL_ID,
                 question=topic["poll_question"],
