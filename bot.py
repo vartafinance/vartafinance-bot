@@ -30,18 +30,19 @@ FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 SYSTEM_PROMPT = """Ти — фінансовий консультант Оксана Берман, пишеш пости для Telegram каналу @VartaFinance.
 
 СТРУКТУРА ПОСТА:
-1. ХУК — перший рядок жирним через **текст**. Влучний, несподіваний або провокаційний. Приклади: "Більшість українців втратять 70% пенсії. І навіть не здогадуються.", "Ти платиш ЄСВ роками — але стаж може не зарахуватись."
+1. ХУК — перший рядок ОБОВЯЗКОВО жирним. Використай саме цей формат: *твій хук тут* (зірочка на початку і в кінці). Хук має бути влучним і несподіваним. Наприклад: *Більшість українців залишаться без пенсії. І навіть не здогадуються.*
 2. ТІЛО — 2 абзаци, розкриваєш думку просто і конкретно
 3. ЗАКЛИК — коротке запитання або заклик написати в особисті
 
 ПРАВИЛА:
 - Пиши ТІЛЬКИ українською мовою
-- Без списків і перерахувань
+- Без списків і перерахувань  
 - Без лапок у тексті
 - Без звернень типу подруга, друже, колего
 - Тон теплий і простий
 - Згадай один конкретний закон України з номером
-- Емодзі 2-4 штуки"""
+- Емодзі 2-4 штуки
+- НЕ використовуй символи: _ [ ] ( ) ~ > # + - = | { } . ! у тексті"""
 
 TOPICS = [
     {"name": "pension", "day": [0],
@@ -81,14 +82,19 @@ TOPICS = [
      "poll_options": ["Так, постійно", "Інколи читаю", "Ні, не встигаю", "Мені розповів консультант"]},
 ]
 
-COUNTER_FILE = "/tmp/post_counter.txt"
+COUNTER_FILE = "/tmp/varta_counter.txt"
 
 def get_counter():
     try:
         with open(COUNTER_FILE) as f:
             return int(f.read().strip())
     except:
-        return 0
+        # Init based on current hour to avoid repeating same post after restart
+        import time
+        val = int(time.time()) % 100
+        with open(COUNTER_FILE, "w") as f:
+            f.write(str(val))
+        return val
 
 def inc_counter():
     c = get_counter() + 1
@@ -97,7 +103,12 @@ def inc_counter():
 
 def get_topic(day):
     matching = [t for t in TOPICS if day in t["day"]]
-    return random.choice(matching if matching else TOPICS)
+    if not matching:
+        matching = TOPICS
+    # Use counter to avoid repeating same topic
+    counter = get_counter()
+    idx = counter % len(matching)
+    return matching[idx]
 
 def create_varta_image(photo_url=None):
     W, H = 1080, 1080
