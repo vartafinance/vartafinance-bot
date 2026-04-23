@@ -6,6 +6,7 @@ from datetime import datetime
 import anthropic
 import openai
 import requests
+import re
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 import pytz
@@ -16,6 +17,8 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "YOUR_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@VartaFinance")
+TEST_CHANNEL_ID = os.getenv("TEST_CHANNEL_ID", "")
+MINSOC_CHANNEL = "@MinSocUA"
 
 SCHEDULE_DAYS = "0,2,4"
 SCHEDULE_HOUR = 10
@@ -172,9 +175,26 @@ async def generate_photo(prompt):
     )
     return resp.data[0].url
 
-async def publish_post():
+async def get_minsoc_news(bot):
+    """Отримати останні новини з @MinSocUA через web preview"""
+    try:
+        url = "https://t.me/s/MinSocUA"
+        r = requests.get(url, timeout=10)
+        # Extract last post text
+        posts = re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', r.text, re.DOTALL)
+        if posts:
+            # Clean HTML tags
+            text = re.sub(r'<[^>]+>', '', posts[-1]).strip()
+            return text[:500] if len(text) > 500 else text
+    except Exception as e:
+        print("MinSoc parse error: " + str(e))
+    return None
+
+async def publish_post(test_mode=False):
+    target_channel = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
     bot = Bot(token=TELEGRAM_TOKEN)
     tz = pytz.timezone(TIMEZONE)
+    target = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
     now = datetime.now(tz)
     topic = get_topic(now.weekday())
     counter = get_counter()
@@ -189,15 +209,15 @@ async def publish_post():
             print("Generating photo...")
             photo_url = await generate_photo(topic["image_prompt"])
             image_buf = create_varta_image(photo_url)
-            await bot.send_photo(chat_id=CHANNEL_ID, photo=image_buf)
+            await bot.send_photo(chat_id=target, photo=image_buf)
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
-            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
+            await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
             print("Posted with image OK")
         else:
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
-            await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
+            await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
             await bot.send_poll(
-                chat_id=CHANNEL_ID,
+                chat_id=target,
                 question=topic["poll_question"],
                 options=topic["poll_options"],
                 is_anonymous=True
@@ -221,7 +241,7 @@ async def main():
     scheduler.start()
     print("Test post in 5 sec...")
     await asyncio.sleep(5)
-    await publish_post()
+    await publish_post(test_mode=True)
     print("Running...")
     try:
         while True:
