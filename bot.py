@@ -298,22 +298,22 @@ def inc_counter():
     with open(COUNTER_FILE, "w") as f:
         f.write(str(c))
 
-# Map topic names to local image files
+# Map topic names to local image files (original Gemini filenames)
 TOPIC_IMAGES = {
-    "pension": "img_pension.png",
-    "stazh": "img_work.png",
-    "solidarna": "img_pension.png",
-    "etrudova": "img_work.png",
-    "life": "img_insurance.png",
-    "dms": "img_insurance.png",
-    "fop": "img_fop.png",
-    "moriak": "img_sailor.png",
-    "youth": "img_finance.png",
-    "women": "img_finance.png",
-    "war": "img_insurance.png",
-    "psych": "img_finance.png",
-    "grawe": "img_insurance.png",
-    "kzpp": "img_law.png",
+    "pension": "Gemini_Generated_Image_cdldk2cdldk2cdld.png",
+    "stazh": "Gemini_Generated_Image_es1igwes1igwes1i.png",
+    "solidarna": "Gemini_Generated_Image_cdldk2cdldk2cdld.png",
+    "etrudova": "Gemini_Generated_Image_es1igwes1igwes1i.png",
+    "life": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
+    "dms": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
+    "fop": "Gemini_Generated_Image_xmzqshxmzqshxmzq.png",
+    "moriak": "Gemini_Generated_Image_n0ipvdn0ipvdn0ip.png",
+    "youth": "Gemini_Generated_Image_mxwhgemxwhgemxwh.png",
+    "women": "Gemini_Generated_Image_mxwhgemxwhgemxwh.png",
+    "war": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
+    "psych": "Gemini_Generated_Image_mxwhgemxwhgemxwh.png",
+    "grawe": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
+    "kzpp": "Gemini_Generated_Image_dhd5qadhd5qadhd5.png",
 }
 
 def get_topic_image(topic_name):
