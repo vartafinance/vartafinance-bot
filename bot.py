@@ -341,9 +341,10 @@ def create_varta_image(headline, photo_url=None):
     draw.rectangle([0, 0, W, 8], fill=GOLD)
 
     try:
-        fb = ImageFont.truetype(FONT_BOLD, 28)
-        ft = ImageFont.truetype(FONT_BOLD, 64)
-    except:
+        fb = ImageFont.truetype(FONT_BOLD, 28) if FONT_BOLD else ImageFont.load_default()
+        ft = ImageFont.truetype(FONT_BOLD, 64) if FONT_BOLD else ImageFont.load_default()
+    except Exception as e:
+        print("Font load error: " + str(e))
         fb = ft = ImageFont.load_default()
 
     part1 = "Finansova "
