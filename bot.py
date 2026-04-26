@@ -317,61 +317,89 @@ def wrap_text(draw, text, font, max_w):
         lines.append(line)
     return lines
 
+def wrap_text(draw, text, font, max_w):
+    words = text.split()
+    lines, line = [], ""
+    for w in words:
+        test = (line + " " + w).strip()
+        if draw.textbbox((0,0), test, font=font)[2] > max_w and line:
+            lines.append(line)
+            line = w
+        else:
+            line = test
+    if line:
+        lines.append(line)
+    return lines
+
 def create_varta_image(headline, photo_url=None):
     W, H = 1080, 1080
+    TOP_H = 520
+    BOT_H = H - TOP_H
+    LIGHT_BLUE = (30, 100, 200)
 
-    img = Image.new("RGB", (W, H), (245, 248, 255))
+    img = Image.new("RGB", (W, H), (245, 247, 252))
     draw = ImageDraw.Draw(img)
 
-    if photo_url:
-        try:
-            r = requests.get(photo_url, timeout=20)
-            bg = Image.open(io.BytesIO(r.content)).convert("RGB")
-            bg = bg.resize((W, H), Image.LANCZOS)
-            img.paste(bg, (0, 0))
-            draw = ImageDraw.Draw(img)
-        except Exception as e:
-            print("photo err: " + str(e))
+    # Gradient blue top
+    for y in range(TOP_H):
+        t = y / TOP_H
+        r = int(DARK_BLUE[0] + (LIGHT_BLUE[0]-DARK_BLUE[0]) * t * 0.4)
+        g = int(DARK_BLUE[1] + (LIGHT_BLUE[1]-DARK_BLUE[1]) * t * 0.4)
+        b = int(DARK_BLUE[2] + (LIGHT_BLUE[2]-DARK_BLUE[2]) * t * 0.4)
+        draw.line([(0,y),(W,y)], fill=(r,g,b))
 
-    # Dark overlay for text
-    overlay = Image.new("RGBA", (W, 320), (13, 43, 92, 215))
-    img.paste(overlay, (0, 0), overlay)
-    draw = ImageDraw.Draw(img)
-
-    draw.rectangle([0, 0, W, 8], fill=GOLD)
+    # Gold stripes
+    draw.rectangle([0, 0, W, 10], fill=GOLD)
+    draw.rectangle([0, TOP_H, W, TOP_H+10], fill=GOLD)
 
     try:
-        fb = ImageFont.truetype(FONT_BOLD, 28) if FONT_BOLD else ImageFont.load_default()
-        ft = ImageFont.truetype(FONT_BOLD, 64) if FONT_BOLD else ImageFont.load_default()
+        fb = ImageFont.truetype(FONT_BOLD, 32) if FONT_BOLD else ImageFont.load_default()
+        ft = ImageFont.truetype(FONT_BOLD, 68) if FONT_BOLD else ImageFont.load_default()
+        fs = ImageFont.truetype(FONT_REG, 26) if FONT_REG else ImageFont.load_default()
     except Exception as e:
-        print("Font load error: " + str(e))
-        fb = ft = ImageFont.load_default()
+        print("Font error: " + str(e))
+        fb = ft = fs = ImageFont.load_default()
 
+    # Brand name
     part1 = "Finansova "
     part2 = "VARTA"
     w1 = draw.textbbox((0,0), part1, font=fb)[2]
     w2 = draw.textbbox((0,0), part2, font=fb)[2]
     sx = (W - w1 - w2) // 2
-    draw.text((sx, 16), part1, font=fb, fill=WHITE)
-    draw.text((sx + w1, 16), part2, font=fb, fill=GOLD)
+    draw.text((sx, 20), part1, font=fb, fill=WHITE)
+    draw.text((sx+w1, 20), part2, font=fb, fill=GOLD)
 
-    draw.rectangle([60, 54, W-60, 59], fill=GOLD)
+    # Gold divider
+    draw.rectangle([80, 70, W-80, 75], fill=GOLD)
 
-    lines = wrap_text(draw, headline, ft, W-80)
-    total_h = len(lines) * 78
-    start_y = 68 + max(0, (300 - 68 - total_h) // 2)
+    # Headline
+    lines = wrap_text(draw, headline, ft, W-100)
+    total_h = len(lines) * 85
+    start_y = 90 + max(0, (TOP_H - 90 - total_h) // 2)
     for i, ln in enumerate(lines):
         lw = draw.textbbox((0,0), ln, font=ft)[2]
-        draw.text(((W-lw)//2+2, start_y+i*78+2), ln, font=ft, fill=(0,20,80))
-        draw.text(((W-lw)//2, start_y+i*78), ln, font=ft, fill=WHITE)
+        draw.text(((W-lw)//2+2, start_y+i*85+2), ln, font=ft, fill=(0,20,70))
+        draw.text(((W-lw)//2, start_y+i*85), ln, font=ft, fill=WHITE)
 
-    overlay2 = Image.new("RGBA", (W, 55), (13, 43, 92, 200))
-    img.paste(overlay2, (0, H-55), overlay2)
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([0, H-55, W, H-50], fill=GOLD)
+    # Bottom photo
+    if photo_url:
+        try:
+            r = requests.get(photo_url, timeout=20)
+            photo = Image.open(io.BytesIO(r.content)).convert("RGB")
+            photo = photo.resize((W, BOT_H - 80), Image.LANCZOS)
+            img.paste(photo, (0, TOP_H + 10))
+        except Exception as e:
+            print("photo err: " + str(e))
+            draw.rectangle([60, TOP_H+20, W-60, H-100], fill=(220, 228, 248))
+    else:
+        draw.rectangle([60, TOP_H+20, W-60, H-100], fill=(220, 228, 248))
+
+    # Bottom bar
+    draw.rectangle([0, H-80, W, H], fill=DARK_BLUE)
+    draw.rectangle([0, H-82, W, H-76], fill=GOLD)
     ch = "@VartaFinance"
-    chw = draw.textbbox((0,0), ch, font=fb)[2]
-    draw.text(((W-chw)//2, H-40), ch, font=fb, fill=GOLD)
+    chw = draw.textbbox((0,0), ch, font=fs)[2]
+    draw.text(((W-chw)//2, H-58), ch, font=fs, fill=GOLD)
 
     buf = io.BytesIO()
     img.save(buf, "PNG")
