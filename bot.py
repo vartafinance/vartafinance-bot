@@ -462,8 +462,6 @@ async def publish_post(test_mode=False):
     try:
         text = await generate_text(topic)
         if use_image:
-            print("Generating photo...")
-            photo_url = await generate_photo(topic["image_prompt"])
             image_buf = create_varta_image(topic["hook"], photo_url)
             await bot.send_photo(chat_id=target, photo=image_buf)
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
