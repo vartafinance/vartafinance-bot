@@ -388,16 +388,24 @@ async def generate_text(topic):
     )
     return msg.content[0].text
 
-async def generate_photo(prompt):
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    resp = client.images.generate(
-        model="dall-e-3",
-        prompt=prompt,
-        size="1024x1024",
-        quality="standard",
-        n=1
-    )
-    return resp.data[0].url
+async def generate_photo(prompt, retries=2):
+    import time
+    client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=120)
+    for attempt in range(retries):
+        try:
+            resp = client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1024",
+                quality="standard",
+                n=1
+            )
+            return resp.data[0].url
+        except Exception as e:
+            print("Photo attempt " + str(attempt+1) + " failed: " + str(e))
+            if attempt < retries - 1:
+                time.sleep(5)
+    return None
 
 async def get_minsoc_news(bot):
     """Отримати останні новини з @MinSocUA через web preview"""
@@ -416,7 +424,9 @@ async def get_minsoc_news(bot):
 
 async def publish_post(test_mode=False):
     target_channel = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
-    bot = Bot(token=TELEGRAM_TOKEN)
+    from telegram.request import HTTPXRequest
+    request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
+    bot = Bot(token=TELEGRAM_TOKEN, request=request)
     tz = pytz.timezone(TIMEZONE)
     target = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
     now = datetime.now(tz)
