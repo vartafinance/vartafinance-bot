@@ -298,6 +298,33 @@ def inc_counter():
     with open(COUNTER_FILE, "w") as f:
         f.write(str(c))
 
+# Map topic names to local image files
+TOPIC_IMAGES = {
+    "pension": "img_pension.png",
+    "stazh": "img_work.png",
+    "solidarna": "img_pension.png",
+    "etrudova": "img_work.png",
+    "life": "img_insurance.png",
+    "dms": "img_insurance.png",
+    "fop": "img_fop.png",
+    "moriak": "img_sailor.png",
+    "youth": "img_finance.png",
+    "women": "img_finance.png",
+    "war": "img_insurance.png",
+    "psych": "img_finance.png",
+    "grawe": "img_insurance.png",
+    "kzpp": "img_law.png",
+}
+
+def get_topic_image(topic_name):
+    import os as _os
+    for key, img_file in TOPIC_IMAGES.items():
+        if topic_name.startswith(key):
+            path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), img_file)
+            if _os.path.exists(path):
+                return path
+    return None
+
 def get_topic(day):
     counter = get_counter()
     idx = counter % len(TOPICS)
