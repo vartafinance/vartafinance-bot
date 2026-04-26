@@ -334,57 +334,38 @@ def wrap_text(draw, text, font, max_w):
 def create_varta_image(headline, photo_url=None):
     import os as _os
     W, H = 1080, 1080
+    PHOTO_Y = 160
+    PHOTO_H = 760
 
     # Load Canva template
     template_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "template.png")
     if _os.path.exists(template_path):
-        img = Image.open(template_path).convert("RGB")
+        img = Image.open(template_path).convert("RGB").resize((W, H))
         print("Template loaded OK")
     else:
         img = Image.new("RGB", (W, H), DARK_BLUE)
         print("Template not found, using fallback")
 
-    draw = ImageDraw.Draw(img)
-
-    # Paste AI photo in the middle area (y: 180 to 840)
-    PHOTO_Y = 180
-    PHOTO_H = 650
+    # Paste AI photo in middle area
     if photo_url:
         try:
             r = requests.get(photo_url, timeout=20)
             photo = Image.open(io.BytesIO(r.content)).convert("RGB")
             photo = photo.resize((W, PHOTO_H), Image.LANCZOS)
-            # Slightly transparent blend
             img.paste(photo, (0, PHOTO_Y))
-            draw = ImageDraw.Draw(img)
-            # Re-draw bottom bar over photo
-            draw.rectangle([0, H-95, W, H], fill=DARK_BLUE)
-            draw.rectangle([0, H-97, W, H-91], fill=GOLD)
-            try:
-                fs = ImageFont.truetype(FONT_REG, 26) if FONT_REG else ImageFont.load_default()
-            except:
-                fs = ImageFont.load_default()
-            ch = "@VartaFinance"
-            chw = draw.textbbox((0,0), ch, font=fs)[2]
-            draw.text(((W-chw)//2, H-72), ch, font=fs, fill=GOLD)
+            print("Photo pasted OK")
         except Exception as e:
             print("photo err: " + str(e))
 
-    # Overlay headline on top section
-    try:
-        ft = ImageFont.truetype(FONT_BOLD, 62) if FONT_BOLD else ImageFont.load_default()
-    except Exception as e:
-        print("Font error: " + str(e))
-        ft = ImageFont.load_default()
+    # Redraw top brand bar over photo (so brand stays visible)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, W, 155], fill=DARK_BLUE)
+    draw.rectangle([0, 0, W, 8], fill=GOLD)
+    draw.rectangle([0, 145, W, 155], fill=GOLD)
 
-    lines = wrap_text(draw, headline, ft, W-120)
-    total_h = len(lines) * 78
-    # Place headline in top blue area: y 130 to 175
-    start_y = 130 + max(0, (PHOTO_Y - 130 - total_h) // 2)
-    for i, ln in enumerate(lines):
-        lw = draw.textbbox((0,0), ln, font=ft)[2]
-        draw.text(((W-lw)//2+2, start_y+i*78+2), ln, font=ft, fill=(0,20,70))
-        draw.text(((W-lw)//2, start_y+i*78), ln, font=ft, fill=WHITE)
+    # Redraw bottom bar
+    draw.rectangle([0, H-95, W, H], fill=DARK_BLUE)
+    draw.rectangle([0, H-97, W, H-91], fill=GOLD)
 
     buf = io.BytesIO()
     img.save(buf, "PNG")
