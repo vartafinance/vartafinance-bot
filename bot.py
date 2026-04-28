@@ -469,12 +469,18 @@ async def publish_post(test_mode=False):
     try:
         text = await generate_text(topic)
 
-        # Send local image
+        # Send local image (compressed)
         img_path = get_topic_image(topic["name"])
         if img_path:
             print("Using local image: " + img_path)
-            with open(img_path, "rb") as img_file:
-                await bot.send_photo(chat_id=target, photo=img_file)
+            from PIL import Image as PILImage
+            import io as _io
+            pil_img = PILImage.open(img_path).convert("RGB")
+            pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
+            buf = _io.BytesIO()
+            pil_img.save(buf, "JPEG", quality=75)
+            buf.seek(0)
+            await bot.send_photo(chat_id=target, photo=buf)
             print("Image sent OK")
         else:
             print("No local image for: " + topic["name"])
