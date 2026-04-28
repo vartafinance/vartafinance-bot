@@ -449,6 +449,110 @@ async def get_minsoc_news(bot):
         print("MinSoc parse error: " + str(e))
     return None
 
+
+PENSION_KEYWORDS = [
+    "пенсі", "пфу", "пенсійн", "стаж", "єсв", "накопич",
+    "пенсіонер", "виплат", "пенсійного віку", "солідарн"
+]
+
+LAST_NEWS_FILE = "/tmp/last_news.txt"
+
+def get_last_news_id():
+    try:
+        with open(LAST_NEWS_FILE) as f:
+            return f.read().strip()
+    except:
+        return ""
+
+def save_last_news_id(news_id):
+    with open(LAST_NEWS_FILE, "w") as f:
+        f.write(news_id)
+
+async def fetch_minsoc_news():
+    """Fetch pension-related news from MinSocUA"""
+    try:
+        import re as _re
+        r = requests.get("https://t.me/s/MinSocUA", timeout=15)
+        if r.status_code != 200:
+            print("MinSoc fetch failed: " + str(r.status_code))
+            return None
+
+        # Extract posts
+        posts = _re.findall(
+            r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
+            r.text, _re.DOTALL
+        )
+        ids = _re.findall(r'data-post="MinSocUA/(\d+)"', r.text)
+
+        if not posts or not ids:
+            return None
+
+        last_id = get_last_news_id()
+
+        for i, (post_id, post_html) in enumerate(zip(ids, posts)):
+            # Skip already published
+            if post_id == last_id:
+                break
+
+            # Clean HTML
+            text = _re.sub(r'<[^>]+>', '', post_html).strip()
+            text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&#39;', "'")
+
+            if len(text) < 50:
+                continue
+
+            # Check for pension keywords
+            text_lower = text.lower()
+            if any(kw in text_lower for kw in PENSION_KEYWORDS):
+                save_last_news_id(ids[0])  # Save most recent
+                print("Found pension news: " + text[:80])
+                return text
+
+        save_last_news_id(ids[0] if ids else last_id)
+        return None
+
+    except Exception as e:
+        print("MinSoc error: " + repr(e))
+        return None
+
+async def publish_news_post(bot, news_text, target):
+    """Rewrite news in VartaFinance style and publish"""
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    prompt = (
+        "Ось новина від Міністерства соціальної політики України:\n\n" +
+        news_text +
+        "\n\nПерепиши цю новину для Telegram каналу @VartaFinance фінансового консультанта. "
+        "Стиль: коротко 2-3 абзаци, українською, без лапок, тон теплий. "
+        "Починай з жирного хуку через *текст*. "
+        "Поясни що ця новина означає для звичайної людини. "
+        "Закінчи закликом написати в особисті для консультації."
+    )
+
+    msg = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=600,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    post_text = msg.content[0].text
+
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
+
+    # Use law/finance image for news
+    img_path = get_topic_image("kzpp")
+    if img_path:
+        from PIL import Image as PILImage
+        import io as _io
+        pil_img = PILImage.open(img_path).convert("RGB")
+        pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
+        buf = _io.BytesIO()
+        pil_img.save(buf, "JPEG", quality=75)
+        buf.seek(0)
+        await bot.send_photo(chat_id=target, photo=buf)
+
+    await bot.send_message(chat_id=target, text=post_text, parse_mode="Markdown", reply_markup=keyboard)
+    print("News post published OK")
+
 async def publish_post(test_mode=False, force_image=False):
     target_channel = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
     from telegram.request import HTTPXRequest
@@ -513,6 +617,21 @@ async def main():
             minute=SCHEDULE_MINUTE,
             timezone=TIMEZONE
         )
+    )
+
+    async def check_and_publish_news():
+        bot_news = Bot(token=TELEGRAM_TOKEN)
+        target = CHANNEL_ID
+        print("Checking MinSocUA for pension news...")
+        news = await fetch_minsoc_news()
+        if news:
+            await publish_news_post(bot_news, news, target)
+        else:
+            print("No new pension news today")
+
+    scheduler.add_job(
+        check_and_publish_news,
+        CronTrigger(hour=9, minute=0, timezone=TIMEZONE)
     )
     scheduler.start()
     print("Test post in 5 sec...")
