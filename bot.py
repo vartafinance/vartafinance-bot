@@ -459,24 +459,35 @@ async def publish_post(test_mode=False):
 
     print("Topic: " + topic["name"] + " | " + ("image" if use_image else "poll"))
 
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
+
     try:
         text = await generate_text(topic)
-        if use_image:
-            image_buf = create_varta_image(topic["hook"], photo_url)
-            await bot.send_photo(chat_id=target, photo=image_buf)
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
-            await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
-            print("Posted with image OK")
+
+        # Send local image
+        img_path = get_topic_image(topic["name"])
+        if img_path:
+            print("Using local image: " + img_path)
+            with open(img_path, "rb") as img_file:
+                await bot.send_photo(chat_id=target, photo=img_file)
+            print("Image sent OK")
         else:
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
-            await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
+            print("No local image for: " + topic["name"])
+
+        # Send text with button
+        await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
+
+        # Every 3rd post add poll
+        if get_counter() % 3 == 0:
             await bot.send_poll(
                 chat_id=target,
-                question=topic["poll_question"],
-                options=topic["poll_options"],
+                question=topic.get("poll_question", "Що думаєте?"),
+                options=topic.get("poll_options", ["Так", "Ні", "Ще думаю"]),
                 is_anonymous=True
             )
-            print("Posted with poll OK")
+            print("Poll sent OK")
+
+        print("Post published OK")
     except Exception as e:
         print("Error: " + repr(e))
 
