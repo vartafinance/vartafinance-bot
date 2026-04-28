@@ -298,31 +298,36 @@ def inc_counter():
     with open(COUNTER_FILE, "w") as f:
         f.write(str(c))
 
-# Map topic names to local image files (original Gemini filenames)
+# Map topic names to local image files
+import random as _random
 TOPIC_IMAGES = {
-    "pension": "Gemini_Generated_Image_cdldk2cdldk2cdld.png",
-    "stazh": "Gemini_Generated_Image_es1igwes1igwes1i.png",
-    "solidarna": "Gemini_Generated_Image_cdldk2cdldk2cdld.png",
-    "etrudova": "Gemini_Generated_Image_es1igwes1igwes1i.png",
-    "life": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
-    "dms": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
-    "fop": "Gemini_Generated_Image_xmzqshxmzqshxmzq.png",
-    "moriak": "Gemini_Generated_Image_n0ipvdn0ipvdn0ip.png",
-    "youth": "Gemini_Generated_Image_mxwhgemxwhgemxwh.png",
-    "women": "Gemini_Generated_Image_mxwhgemxwhgemxwh.png",
-    "war": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
-    "psych": "Gemini_Generated_Image_mxwhgemxwhgemxwh.png",
-    "grawe": "Gemini_Generated_Image_4mfb284mfb284mfb.png",
-    "kzpp": "Gemini_Generated_Image_dhd5qadhd5qadhd5.png",
+    "pension": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
+    "stazh": ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
+    "solidarna": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
+    "etrudova": ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
+    "life": ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "dms": ["Gemini_Generated_Image_4mfb284mfb284mfb.png", "img_women_mom.png"],
+    "fop": ["Gemini_Generated_Image_xmzqshxmzqshxmzq.png", "img_youth_cafe.png"],
+    "moriak": ["Gemini_Generated_Image_n0ipvdn0ipvdn0ip.png", "img_sailor_captain.png", "img_sailor_family.png", "img_sailor_wife.png"],
+    "youth": ["img_youth_cafe.png", "img_youth_library.png", "img_youth_couple.png"],
+    "women": ["img_women_granny.png", "img_women_mom.png", "img_women_work.png"],
+    "war": ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "psych": ["img_psych_money.png", "img_youth_couple.png"],
+    "grawe": ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "kzpp": ["Gemini_Generated_Image_dhd5qadhd5qadhd5.png"],
 }
 
 def get_topic_image(topic_name):
     import os as _os
-    for key, img_file in TOPIC_IMAGES.items():
+    for key, img_files in TOPIC_IMAGES.items():
         if topic_name.startswith(key):
-            path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), img_file)
-            if _os.path.exists(path):
-                return path
+            available = []
+            for img_file in img_files:
+                path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), img_file)
+                if _os.path.exists(path):
+                    available.append(path)
+            if available:
+                return _random.choice(available)
     return None
 
 def get_topic(day):
