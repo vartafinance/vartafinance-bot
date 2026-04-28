@@ -449,7 +449,7 @@ async def get_minsoc_news(bot):
         print("MinSoc parse error: " + str(e))
     return None
 
-async def publish_post(test_mode=False):
+async def publish_post(test_mode=False, force_image=False):
     target_channel = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
@@ -459,7 +459,7 @@ async def publish_post(test_mode=False):
     now = datetime.now(tz)
     topic = get_topic(now.weekday())
     counter = get_counter()
-    use_image = (counter % 2 == 0)
+    use_image = force_image or (counter % 2 == 0)
     inc_counter()
 
     print("Topic: " + topic["name"] + " | " + ("image" if use_image else "poll"))
@@ -517,7 +517,8 @@ async def main():
     scheduler.start()
     print("Test post in 5 sec...")
     await asyncio.sleep(5)
-    await publish_post(test_mode=True)
+    # Force image on startup test
+    await publish_post(test_mode=True, force_image=True)
     print("Running...")
     try:
         while True:
