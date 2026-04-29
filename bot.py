@@ -2,34 +2,37 @@ import os
 import asyncio
 import random
 import io
+import re
 from datetime import datetime
+
 import anthropic
 import openai
 import requests
-import re
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
+# ── Конфіг ──────────────────────────────────────────────────────────────────
+TELEGRAM_TOKEN    = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "YOUR_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_KEY")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@VartaFinance")
-TEST_CHANNEL_ID = os.getenv("TEST_CHANNEL_ID", "")
-MINSOC_CHANNEL = "@MinSocUA"
+OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "YOUR_KEY")
+CHANNEL_ID        = os.getenv("CHANNEL_ID", "@VartaFinance")
+TEST_CHANNEL_ID   = os.getenv("TEST_CHANNEL_ID", "")
+MINSOC_CHANNEL    = "@MinSocUA"
 
-SCHEDULE_DAYS = "0,2,4"
-SCHEDULE_HOUR = 10
+SCHEDULE_DAYS   = "0,2,4"
+SCHEDULE_HOUR   = 10
 SCHEDULE_MINUTE = 0
-TIMEZONE = "Europe/Kiev"
+TIMEZONE        = "Europe/Kiev"
 
 DARK_BLUE = (13, 43, 92)
-GOLD = (212, 160, 23)
-WHITE = (255, 255, 255)
+GOLD      = (212, 160, 23)
+WHITE     = (255, 255, 255)
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
+# ── Системний промпт ─────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """Ти — фінансовий консультант Оксана Берман, пишеш пости для Telegram каналу @VartaFinance.
 
 ВАЖЛИВО: Коли згадуєш накопичення — завжди пиши про ЩОРІЧНІ відкладення, не щомісячні. Для прикладу використовуй суму 25000 грн на рік. НЕ згадуй НПФ або недержавні пенсійні фонди. Замість цього згадуй страхову компанію GRAWE Ukraine як інструмент накопичення і захисту.
@@ -41,7 +44,7 @@ SYSTEM_PROMPT = """Ти — фінансовий консультант Окса
 
 ПРАВИЛА:
 - Пиши ТІЛЬКИ українською мовою
-- Без списків і перерахувань  
+- Без списків і перерахувань
 - Без лапок у тексті
 - Без звернень типу подруга, друже, колего
 - Тон теплий і простий
@@ -49,8 +52,8 @@ SYSTEM_PROMPT = """Ти — фінансовий консультант Окса
 - Емодзі 2-4 штуки
 - НЕ використовуй символи: _ [ ] ( ) ~ > # + - = | { } . ! у тексті"""
 
+# ── Теми ────────────────────────────────────────────────────────────────────
 TOPICS = [
-    # ПЕНСІЯ І ДЕРЖАВА
     {"name": "pension_1", "day": [0,1,2,3,4],
      "hook": "Середня пенсія в Україні — 3800 грн. Це менше за комуналку взимку.",
      "text": "Напиши пост про те що середня пенсія в Україні 3800 грн менше за комуналку взимку. Закон 1058-IV про пенсійне страхування. Акцент на тому що треба накопичувати самостійно через GRAWE Ukraine.",
@@ -81,8 +84,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, Ukrainian woman planning finances with notebook at kitchen table, warm morning light, coffee, photorealistic, no text, no watermark",
      "poll_question": "Чи знали ви що ПФУ не зберігає ваші гроші?",
      "poll_options": ["Так, знала", "Не знала", "Не розумію як це", "Байдуже"]},
-
-    # ТРУДОВИЙ СТАЖ
     {"name": "stazh_1", "day": [0,1,2,3,4],
      "hook": "Ти можеш пропрацювати 20 років і отримати мінімальну пенсію. Ось чому.",
      "text": "Напиши пост про те що стаж і розмір пенсії — різні речі. КЗпП та Закон 1058-IV статті 24-26. Акцент на страховому стажі vs загальному.",
@@ -113,8 +114,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, Ukrainian woman smiling at phone, bright sunny home interior, morning atmosphere, photorealistic, no text, no watermark",
      "poll_question": "Чи перевіряли ви свій стаж в Дії?",
      "poll_options": ["Так, все гаразд", "Знайшла помилки", "Ще ні, перевірю", "Не знаю як"]},
-
-    # СТРАХУВАННЯ ЖИТТЯ
     {"name": "life_1", "day": [0,1,2,3,4],
      "hook": "Якщо з тобою щось трапиться — твоя сім'я залишиться без доходу на скільки місяців?",
      "text": "Напиши пост про захист сім'ї через страхування життя. Закон 85/96-ВР про страхування. GRAWE Ukraine — надійний захист.",
@@ -145,8 +144,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, caring Ukrainian family together at home, warm evening atmosphere, parents and children, photorealistic, no text, no watermark",
      "poll_question": "Чи є у вас страхування від нещасних випадків?",
      "poll_options": ["Так, є", "Тільки на роботі", "Ні, немає", "Не думала про це"]},
-
-    # ФОП І САМОЗАЙНЯТІ
     {"name": "fop_1", "day": [0,1,2,3,4],
      "hook": "ФОП не має лікарняних. Захворів — не заробляєш.",
      "text": "Напиши пост про відсутність соціальних гарантій у ФОП. КЗпП та Закон 2464-VI. ДМС і страхування як вирішення.",
@@ -155,7 +152,7 @@ TOPICS = [
      "poll_options": ["Так, ФОП", "Самозайнятий", "Найманий працівник", "Інше"]},
     {"name": "fop_2", "day": [0,1,2,3,4],
      "hook": "IT-спеціаліст заробляє 3000 доларів. А пенсія буде 4000 гривень.",
-     "text": "Напиши пост про пенсію IT-спеціалістів ФОП. Закон 1058-IV та мінімальний ЄСВ на 3 групі. НПФ і GRAWE як рішення.",
+     "text": "Напиши пост про пенсію IT-спеціалістів ФОП. Закон 1058-IV та мінімальний ЄСВ на 3 групі. GRAWE як рішення.",
      "image_prompt": "Warm lifestyle photography, young Ukrainian IT professional at desk thinking, warm modern apartment, laptop open, photorealistic, no text, no watermark",
      "poll_question": "Чи думають IT-спеціалісти про свою пенсію?",
      "poll_options": ["Так, накопичую", "Думаю але не дію", "Ні, ще молодий", "Планую виїхати"]},
@@ -165,8 +162,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, Ukrainian entrepreneur looking at documents with concern, warm cozy home office, photorealistic, no text, no watermark",
      "poll_question": "Чи знали ви що при закритті ФОП стаж зупиняється?",
      "poll_options": ["Так, знала", "Не знала", "У мене немає ФОП", "Цікаво дізнатись більше"]},
-
-    # МОРЯКИ
     {"name": "moriak_1", "day": [0,1,2,3,4],
      "hook": "Зарплата моряка — валюта. Пенсія — гривні. Різниця вбиває.",
      "text": "Напиши пост про пенсійну проблему моряків. Зарплата у валюті але пенсія в гривнях. Закон 1058-IV. GRAWE дозволяє накопичувати у стабільних інструментах.",
@@ -185,8 +180,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, Ukrainian woman at home managing household thoughtfully, warm natural light, photorealistic, no text, no watermark",
      "poll_question": "Чи думали ви про власну пенсію якщо не працюєте офіційно?",
      "poll_options": ["Так, думала", "Не думала", "Є чоловікова пенсія", "Хочу дізнатись більше"]},
-
-    # МОЛОДЬ
     {"name": "youth_1", "day": [0,1,2,3,4],
      "hook": "Почав накопичувати в 25 — матимеш вдвічі більше ніж той хто почав в 35.",
      "text": "Напиши пост про силу складних відсотків і ранній старт. Закон 1057-IV про НПФ. Розрахунок: 500 грн на місяць з 25 років vs з 35 років.",
@@ -199,8 +192,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, young Ukrainian woman excited at first job, warm professional setting, confident, photorealistic, no text, no watermark",
      "poll_question": "Ваша перша робота була офіційною?",
      "poll_options": ["Так, офіційна", "Частково", "Ні, неофіційна", "Ще не працювала"]},
-
-    # ЖІНКИ І СІМ'Я
     {"name": "women_1", "day": [0,1,2,3,4],
      "hook": "Жінки в Україні живуть довше. Але пенсія менша — бо стаж менший.",
      "text": "Напиши пост про пенсійну нерівність жінок. Декрет, догляд за дітьми та батьками. Закон 1058-IV. GRAWE як особистий захист.",
@@ -219,8 +210,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, active happy elderly Ukrainian woman enjoying retirement outdoors, warm sunny day, photorealistic, no text, no watermark",
      "poll_question": "Як плануєте фінансово забезпечити себе на пенсії?",
      "poll_options": ["Державна пенсія", "Накопичення + пенсія", "Діти допоможуть", "Ще не думала"]},
-
-    # ВІЙНА І НЕВИЗНАЧЕНІСТЬ
     {"name": "war_1", "day": [0,1,2,3,4],
      "hook": "Під час війни особливо важливо мати фінансову подушку.",
      "text": "Напиши пост про фінансову безпеку під час війни. Закон 85/96-ВР. GRAWE продовжує виплати навіть в умовах воєнного стану.",
@@ -239,8 +228,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, Ukrainian couple planning finances calmly together, warm home atmosphere, notebook on table, photorealistic, no text, no watermark",
      "poll_question": "Що для вас зараз важливіше?",
      "poll_options": ["Захист від ризиків", "Накопичення", "І те і інше", "Ще думаю"]},
-
-    # ПСИХОЛОГІЯ ГРОШЕЙ
     {"name": "psych_1", "day": [0,1,2,3,4],
      "hook": "Найпоширеніша відмовка: почну відкладати коли буде більше грошей.",
      "text": "Напиши пост про відкладання фінансових рішень. Закон 1057-IV про НПФ. 500 грн зараз кращі ніж 5000 грн через 10 років.",
@@ -265,8 +252,6 @@ TOPICS = [
      "image_prompt": "Warm lifestyle photography, determined Ukrainian woman making important financial decision, bright warm home, photorealistic, no text, no watermark",
      "poll_question": "Коли ви плануєте почати або вже почали накопичувати?",
      "poll_options": ["Вже накопичую", "Почну цього року", "Ще думаю", "Не знаю з чого почати"]},
-
-    # GRAWE І ПРОДУКТИ
     {"name": "grawe_1", "day": [0,1,2,3,4],
      "hook": "GRAWE в Україні вже 28 років. Пережили дефолт, кризу і війну.",
      "text": "Напиши пост про надійність GRAWE Ukraine. Закон 85/96-ВР та ліцензія НБУ. 28 років на українському ринку — факти.",
@@ -281,6 +266,26 @@ TOPICS = [
      "poll_options": ["Так, знала", "Не знала", "Це важливо для мене", "Байдуже звідки"]},
 ]
 
+# ── Маппінг зображень ────────────────────────────────────────────────────────
+TOPIC_IMAGES = {
+    "pension": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
+    "stazh":   ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
+    "life":    ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "dms":     ["Gemini_Generated_Image_4mfb284mfb284mfb.png", "img_women_mom.png"],
+    "fop":     ["Gemini_Generated_Image_xmzqshxmzqshxmzq.png", "img_youth_cafe.png"],
+    "moriak":  ["Gemini_Generated_Image_n0ipvdn0ipvdn0ip.png", "img_sailor_captain.png",
+                "img_sailor_family.png", "img_sailor_wife.png"],
+    "youth":   ["img_youth_cafe.png", "img_youth_library.png", "img_youth_couple.png"],
+    "women":   ["img_women_granny.png", "img_women_mom.png", "img_women_work.png"],
+    "war":     ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "psych":   ["img_psych_money.png", "img_youth_couple.png"],
+    "grawe":   ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "kzpp":    ["Gemini_Generated_Image_dhd5qadhd5qadhd5.png"],
+    "solidarna": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
+    "etrudova":  ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
+}
+
+# ── Лічильник ────────────────────────────────────────────────────────────────
 COUNTER_FILE = "/tmp/varta_counter.txt"
 
 def get_counter():
@@ -288,7 +293,6 @@ def get_counter():
         with open(COUNTER_FILE) as f:
             return int(f.read().strip())
     except:
-        # Init based on current hour to avoid repeating same post after restart
         import time
         val = int(time.time()) % 100
         with open(COUNTER_FILE, "w") as f:
@@ -300,49 +304,36 @@ def inc_counter():
     with open(COUNTER_FILE, "w") as f:
         f.write(str(c))
 
-# Map topic names to local image files
-import random as _random
-TOPIC_IMAGES = {
-    "pension": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
-    "stazh": ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
-    "solidarna": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
-    "etrudova": ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
-    "life": ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
-    "dms": ["Gemini_Generated_Image_4mfb284mfb284mfb.png", "img_women_mom.png"],
-    "fop": ["Gemini_Generated_Image_xmzqshxmzqshxmzq.png", "img_youth_cafe.png"],
-    "moriak": ["Gemini_Generated_Image_n0ipvdn0ipvdn0ip.png", "img_sailor_captain.png", "img_sailor_family.png", "img_sailor_wife.png"],
-    "youth": ["img_youth_cafe.png", "img_youth_library.png", "img_youth_couple.png"],
-    "women": ["img_women_granny.png", "img_women_mom.png", "img_women_work.png"],
-    "war": ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
-    "psych": ["img_psych_money.png", "img_youth_couple.png"],
-    "grawe": ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
-    "kzpp": ["Gemini_Generated_Image_dhd5qadhd5qadhd5.png"],
-}
-
+# ── Зображення ───────────────────────────────────────────────────────────────
 def get_topic_image(topic_name):
-    import os as _os
     for key, img_files in TOPIC_IMAGES.items():
         if topic_name.startswith(key):
-            available = []
-            for img_file in img_files:
-                path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), img_file)
-                if _os.path.exists(path):
-                    available.append(path)
+            available = [
+                f for f in (
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), img)
+                    for img in img_files
+                ) if os.path.exists(f)
+            ]
             if available:
-                return _random.choice(available)
+                return random.choice(available)
     return None
 
+# ── ВИПРАВЛЕННЯ 4: фільтрація тем за днем тижня ──────────────────────────────
 def get_topic(day):
     counter = get_counter()
-    idx = counter % len(TOPICS)
-    return TOPICS[idx]
+    filtered = [t for t in TOPICS if day in t.get("day", list(range(7)))]
+    if not filtered:
+        filtered = TOPICS
+    idx = counter % len(filtered)
+    return filtered[idx]
 
+# ── Допоміжна функція перенесення тексту ─────────────────────────────────────
 def wrap_text(draw, text, font, max_w):
     words = text.split()
     lines, line = [], ""
     for w in words:
         test = (line + " " + w).strip()
-        if draw.textbbox((0,0), test, font=font)[2] > max_w and line:
+        if draw.textbbox((0, 0), test, font=font)[2] > max_w and line:
             lines.append(line)
             line = w
         else:
@@ -351,36 +342,20 @@ def wrap_text(draw, text, font, max_w):
         lines.append(line)
     return lines
 
-def wrap_text(draw, text, font, max_w):
-    words = text.split()
-    lines, line = [], ""
-    for w in words:
-        test = (line + " " + w).strip()
-        if draw.textbbox((0,0), test, font=font)[2] > max_w and line:
-            lines.append(line)
-            line = w
-        else:
-            line = test
-    if line:
-        lines.append(line)
-    return lines
-
+# ── Створення зображення ─────────────────────────────────────────────────────
 def create_varta_image(headline, photo_url=None):
-    import os as _os
     W, H = 1080, 1080
     PHOTO_Y = 160
     PHOTO_H = 760
 
-    # Load Canva template
-    template_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "template.png")
-    if _os.path.exists(template_path):
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.png")
+    if os.path.exists(template_path):
         img = Image.open(template_path).convert("RGB").resize((W, H))
         print("Template loaded OK")
     else:
         img = Image.new("RGB", (W, H), DARK_BLUE)
         print("Template not found, using fallback")
 
-    # Paste AI photo in middle area
     if photo_url:
         try:
             r = requests.get(photo_url, timeout=20)
@@ -391,21 +366,19 @@ def create_varta_image(headline, photo_url=None):
         except Exception as e:
             print("photo err: " + str(e))
 
-    # Redraw top brand bar over photo (so brand stays visible)
     draw = ImageDraw.Draw(img)
     draw.rectangle([0, 0, W, 155], fill=DARK_BLUE)
     draw.rectangle([0, 0, W, 8], fill=GOLD)
     draw.rectangle([0, 145, W, 155], fill=GOLD)
-
-    # Redraw bottom bar
-    draw.rectangle([0, H-95, W, H], fill=DARK_BLUE)
-    draw.rectangle([0, H-97, W, H-91], fill=GOLD)
+    draw.rectangle([0, H - 95, W, H], fill=DARK_BLUE)
+    draw.rectangle([0, H - 97, W, H - 91], fill=GOLD)
 
     buf = io.BytesIO()
     img.save(buf, "PNG")
     buf.seek(0)
     return buf
 
+# ── Генерація тексту ─────────────────────────────────────────────────────────
 async def generate_text(topic):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = "*" + topic["hook"] + "*\n\n" + topic["text"]
@@ -417,6 +390,7 @@ async def generate_text(topic):
     )
     return msg.content[0].text
 
+# ── Генерація фото через DALL-E ───────────────────────────────────────────────
 async def generate_photo(prompt, retries=2):
     import time
     client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=120)
@@ -431,27 +405,12 @@ async def generate_photo(prompt, retries=2):
             )
             return resp.data[0].url
         except Exception as e:
-            print("Photo attempt " + str(attempt+1) + " failed: " + str(e))
+            print(f"Photo attempt {attempt + 1} failed: {e}")
             if attempt < retries - 1:
                 time.sleep(5)
     return None
 
-async def get_minsoc_news(bot):
-    """Отримати останні новини з @MinSocUA через web preview"""
-    try:
-        url = "https://t.me/s/MinSocUA"
-        r = requests.get(url, timeout=10)
-        # Extract last post text
-        posts = re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', r.text, re.DOTALL)
-        if posts:
-            # Clean HTML tags
-            text = re.sub(r'<[^>]+>', '', posts[-1]).strip()
-            return text[:500] if len(text) > 500 else text
-    except Exception as e:
-        print("MinSoc parse error: " + str(e))
-    return None
-
-
+# ── Новини MinSocUA ───────────────────────────────────────────────────────────
 PENSION_KEYWORDS = [
     "пенсі", "пфу", "пенсійн", "стаж", "єсв", "накопич",
     "пенсіонер", "виплат", "пенсійного віку", "солідарн"
@@ -471,56 +430,53 @@ def save_last_news_id(news_id):
         f.write(news_id)
 
 async def fetch_minsoc_news():
-    """Fetch pension-related news from MinSocUA"""
     try:
-        import re as _re
         r = requests.get("https://t.me/s/MinSocUA", timeout=15)
         if r.status_code != 200:
             print("MinSoc fetch failed: " + str(r.status_code))
             return None
 
-        # Extract posts
-        posts = _re.findall(
+        posts = re.findall(
             r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
-            r.text, _re.DOTALL
+            r.text, re.DOTALL
         )
-        ids = _re.findall(r'data-post="MinSocUA/(\d+)"', r.text)
+        ids = re.findall(r'data-post="MinSocUA/(\d+)"', r.text)
 
         if not posts or not ids:
             return None
 
         last_id = get_last_news_id()
+        found_news = None
 
-        for i, (post_id, post_html) in enumerate(zip(ids, posts)):
-            # Skip already published
+        for post_id, post_html in zip(ids, posts):
             if post_id == last_id:
                 break
 
-            # Clean HTML
-            text = _re.sub(r'<[^>]+>', '', post_html).strip()
-            text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&#39;', "'")
+            text = re.sub(r'<[^>]+>', '', post_html).strip()
+            text = (text.replace('&amp;', '&').replace('&lt;', '<')
+                        .replace('&gt;', '>').replace('&#39;', "'"))
 
             if len(text) < 50:
                 continue
 
-            # Check for pension keywords
-            text_lower = text.lower()
-            if any(kw in text_lower for kw in PENSION_KEYWORDS):
-                save_last_news_id(ids[0])  # Save most recent
-                print("Found pension news: " + text[:80])
-                return text
+            if any(kw in text.lower() for kw in PENSION_KEYWORDS):
+                found_news = text
+                break  # зупиняємось на першій знайденій новині
 
-        save_last_news_id(ids[0] if ids else last_id)
-        return None
+        # ВИПРАВЛЕННЯ 5: зберігаємо ID тільки якщо знайшли новину
+        if found_news and ids:
+            save_last_news_id(ids[0])
+            print("Found pension news: " + found_news[:80])
+
+        return found_news
 
     except Exception as e:
         print("MinSoc error: " + repr(e))
         return None
 
+# ── Публікація новини ────────────────────────────────────────────────────────
 async def publish_news_post(bot, news_text, target):
-    """Rewrite news in VartaFinance style and publish"""
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
     prompt = (
         "Ось новина від Міністерства соціальної політики України:\n\n" +
         news_text +
@@ -530,7 +486,6 @@ async def publish_news_post(bot, news_text, target):
         "Поясни що ця новина означає для звичайної людини. "
         "Закінчи закликом написати в особисті для консультації."
     )
-
     msg = client.messages.create(
         model="claude-opus-4-5",
         max_tokens=600,
@@ -538,64 +493,65 @@ async def publish_news_post(bot, news_text, target):
     )
     post_text = msg.content[0].text
 
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
+    ]])
 
-    # Use law/finance image for news
     img_path = get_topic_image("kzpp")
     if img_path:
-        from PIL import Image as PILImage
-        import io as _io
-        pil_img = PILImage.open(img_path).convert("RGB")
-        pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
-        buf = _io.BytesIO()
+        pil_img = Image.open(img_path).convert("RGB").resize((800, 450), Image.LANCZOS)
+        buf = io.BytesIO()
         pil_img.save(buf, "JPEG", quality=75)
         buf.seek(0)
         await bot.send_photo(chat_id=target, photo=buf)
 
-    await bot.send_message(chat_id=target, text=post_text, parse_mode="Markdown", reply_markup=keyboard)
+    await bot.send_message(chat_id=target, text=post_text,
+                           parse_mode="Markdown", reply_markup=keyboard)
     print("News post published OK")
 
-async def publish_post(test_mode=False, force_image=False):
-    target_channel = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
-    from telegram.request import HTTPXRequest
-    request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
-    bot = Bot(token=TELEGRAM_TOKEN, request=request)
-    tz = pytz.timezone(TIMEZONE)
+# ── Публікація звичайного поста ──────────────────────────────────────────────
+async def publish_post(bot, test_mode=False, force_image=False):
     target = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
+    tz = pytz.timezone(TIMEZONE)
     now = datetime.now(tz)
+
     topic = get_topic(now.weekday())
+
+    # ВИПРАВЛЕННЯ 3: зберігаємо лічильник ДО інкременту
     counter = get_counter()
+    # ВИПРАВЛЕННЯ 2: use_image тепер реально використовується
     use_image = force_image or (counter % 2 == 0)
     inc_counter()
 
-    print("Topic: " + topic["name"] + " | " + ("image" if use_image else "poll"))
+    print(f"Topic: {topic['name']} | {'image' if use_image else 'no image'}")
 
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
+    ]])
 
     try:
         text = await generate_text(topic)
 
-        # Send local image (compressed)
-        img_path = get_topic_image(topic["name"])
-        if img_path:
-            print("Using local image: " + img_path)
-            from PIL import Image as PILImage
-            import io as _io
-            pil_img = PILImage.open(img_path).convert("RGB")
-            pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
-            buf = _io.BytesIO()
-            pil_img.save(buf, "JPEG", quality=75)
-            buf.seek(0)
-            await bot.send_photo(chat_id=target, photo=buf)
-            print("Image sent OK")
-        else:
-            print("No local image for: " + topic["name"])
+        # ВИПРАВЛЕННЯ 2: надсилаємо фото тільки якщо use_image == True
+        if use_image:
+            img_path = get_topic_image(topic["name"])
+            if img_path:
+                print("Using local image: " + img_path)
+                pil_img = Image.open(img_path).convert("RGB")
+                pil_img = pil_img.resize((800, 450), Image.LANCZOS)
+                buf = io.BytesIO()
+                pil_img.save(buf, "JPEG", quality=75)
+                buf.seek(0)
+                await bot.send_photo(chat_id=target, photo=buf)
+                print("Image sent OK")
+            else:
+                print("No local image for: " + topic["name"])
 
-        # Send text with button
-        await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
+        await bot.send_message(chat_id=target, text=text,
+                               parse_mode="Markdown", reply_markup=keyboard)
 
-        # Every 3rd post add poll
-        if get_counter() % 3 == 0:
+        # ВИПРАВЛЕННЯ 3: перевіряємо counter (до інкременту), а не get_counter()
+        if counter % 3 == 0:
             await bot.send_poll(
                 chat_id=target,
                 question=topic.get("poll_question", "Що думаєте?"),
@@ -608,26 +564,30 @@ async def publish_post(test_mode=False, force_image=False):
     except Exception as e:
         print("Error: " + repr(e))
 
+# ── Головна функція ───────────────────────────────────────────────────────────
 async def main():
     print("VartaFinance Bot started!")
+
+    # ВИПРАВЛЕННЯ 6: один спільний об'єкт Bot для всього
+    from telegram.request import HTTPXRequest
+    request = HTTPXRequest(connection_pool_size=8, read_timeout=60,
+                           write_timeout=60, connect_timeout=30)
+    bot = Bot(token=TELEGRAM_TOKEN, request=request)
+
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
+
     scheduler.add_job(
         publish_post,
-        CronTrigger(
-            day_of_week=SCHEDULE_DAYS,
-            hour=SCHEDULE_HOUR,
-            minute=SCHEDULE_MINUTE,
-            timezone=TIMEZONE
-        )
+        CronTrigger(day_of_week=SCHEDULE_DAYS, hour=SCHEDULE_HOUR,
+                    minute=SCHEDULE_MINUTE, timezone=TIMEZONE),
+        args=[bot]
     )
 
     async def check_and_publish_news():
-        bot_news = Bot(token=TELEGRAM_TOKEN)
-        target = CHANNEL_ID
         print("Checking MinSocUA for pension news...")
         news = await fetch_minsoc_news()
         if news:
-            await publish_news_post(bot_news, news, target)
+            await publish_news_post(bot, news, CHANNEL_ID)
         else:
             print("No new pension news today")
 
@@ -635,12 +595,13 @@ async def main():
         check_and_publish_news,
         CronTrigger(hour=21, minute=0, timezone=TIMEZONE)
     )
+
     scheduler.start()
     print("Test post in 5 sec...")
     await asyncio.sleep(5)
-    # Force image on startup test
-    await publish_post(test_mode=False, force_image=True)
+    await publish_post(bot, test_mode=False, force_image=True)
     print("Running...")
+
     try:
         while True:
             await asyncio.sleep(60)
