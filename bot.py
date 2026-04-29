@@ -633,7 +633,7 @@ async def main():
 
     scheduler.add_job(
         check_and_publish_news,
-        CronTrigger(hour=9, minute=0, timezone=TIMEZONE)
+        CronTrigger(hour=21, minute=0, timezone=TIMEZONE)
     )
     scheduler.start()
     print("Test post in 5 sec...")
