@@ -268,21 +268,20 @@ TOPICS = [
 
 # ── Маппінг зображень ────────────────────────────────────────────────────────
 TOPIC_IMAGES = {
-    "pension": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
-    "stazh":   ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
-    "life":    ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
-    "dms":     ["Gemini_Generated_Image_4mfb284mfb284mfb.png", "img_women_mom.png"],
-    "fop":     ["Gemini_Generated_Image_xmzqshxmzqshxmzq.png", "img_youth_cafe.png"],
-    "moriak":  ["Gemini_Generated_Image_n0ipvdn0ipvdn0ip.png", "img_sailor_captain.png",
-                "img_sailor_family.png", "img_sailor_wife.png"],
-    "youth":   ["img_youth_cafe.png", "img_youth_library.png", "img_youth_couple.png"],
-    "women":   ["img_women_granny.png", "img_women_mom.png", "img_women_work.png"],
-    "war":     ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
-    "psych":   ["img_psych_money.png", "img_youth_couple.png"],
-    "grawe":   ["Gemini_Generated_Image_4mfb284mfb284mfb.png"],
-    "kzpp":    ["Gemini_Generated_Image_dhd5qadhd5qadhd5.png"],
-    "solidarna": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
-    "etrudova":  ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
+    "pension":   ["img_pension.png", "Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
+    "stazh":     ["img_work.png", "Gemini_Generated_Image_es1igwes1igwes1i.png"],
+    "life":      ["img_insurance.png", "Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "dms":       ["img_insurance.png", "Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "fop":       ["img_fop.png", "Gemini_Generated_Image_xmzqshxmzqshxmzq.png"],
+    "moriak":    ["img_sailor.png", "Gemini_Generated_Image_n0ipvdn0ipvdn0ip.png"],
+    "youth":     ["img_work.png", "Gemini_Generated_Image_mxwhgemxwhgemxwh.png"],
+    "women":     ["img_finance.png", "Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "war":       ["img_finance.png", "Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
+    "psych":     ["img_finance.png", "Gemini_Generated_Image_mxwhgemxwhgemxwh.png"],
+    "grawe":     ["img_insurance.png", "Gemini_Generated_Image_4mfb284mfb284mfb.png"],
+    "kzpp":      ["img_law.png", "Gemini_Generated_Image_dhd5qadhd5qadhd5.png"],
+    "solidarna": ["img_pension.png", "Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
+    "etrudova":  ["img_work.png", "Gemini_Generated_Image_es1igwes1igwes1i.png"],
 }
 
 # ── Лічильник ────────────────────────────────────────────────────────────────
