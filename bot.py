@@ -924,7 +924,7 @@ async def main():
     print("Test post in 5 sec...")
     await asyncio.sleep(5)
     # Force image on startup test
-    await publish_post(test_mode=True, force_image=True)
+    await publish_post(test_mode=False, force_image=True)
     print("Running...")
     try:
         while True:
