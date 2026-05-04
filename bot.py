@@ -654,7 +654,7 @@ async def publish_post(test_mode=False, force_image=False):
 
     print("Topic: " + topic["name"] + " | " + ("image" if use_image else "poll"))
 
-    button_topics = ["life", "grawe", "dms", "pension", "solidarna", "psych"]
+    button_topics = ["life", "grawe", "dms", "pension", "solidarna", "psych", "inflation", "cushion", "budget"]
     show_button = any(topic["name"].startswith(t) for t in button_topics)
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]]) if show_button else None
 
