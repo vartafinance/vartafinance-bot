@@ -325,6 +325,14 @@ TOPICS = [
      "image_prompt": "Calm confident Ukrainian family at home feeling financially protected, warm safe atmosphere, illustration style",
      "poll_question": "Чи збільшили ви свою фінансову подушку під час війни?",
      "poll_options": ["Так, збільшила", "Намагаюсь", "Ні, немає можливості", "Не думала про це"]},
+    # GRAWE — NBU ВИЗНАННЯ
+    {"name": "grawe_nbu", "day": [0,1,2,3,4],
+     "text": """Напиши пост про те що НБУ вперше оприлюднив перелік значимих страховиків станом на 1 січня 2026 року і GRAWE Ukraine страхування життя увійшла до цього списку. Всього 13 компаній, лише дві — у сегменті страхування життя. Поясни що це означає для клієнта — посилений нагляд НБУ, надійність, захист. Згадай Закон 85/96-ВР та Положення НБУ №194. GRAWE 27 років на ринку — пережила всі кризи і продовжує виплати під час війни.""",
+     "hook": "НБУ офіційно визнав GRAWE Ukraine значимою страховою компанією. Що це означає для тебе?",
+     "image_prompt": "Ukrainian family feeling financially protected, official document with seal, warm secure atmosphere, illustration style",
+     "poll_question": "Чи знали ви що НБУ контролює надійність страхових компаній?",
+     "poll_options": ["Так, знала", "Не знала", "Це важливо для мене", "Хочу дізнатись більше"]},
+
     # GRAWE І ПРОДУКТИ
     {"name": "grawe_1", "day": [0,1,2,3,4],
      "hook": "GRAWE в Україні вже 28 років. Пережили дефолт, кризу і війну.",
@@ -699,35 +707,174 @@ async def main():
         )
     )
 
-    async def fetch_grawe_news():
+    async def fetch_channel_news(channel_name, keywords, last_file):
         try:
             import re as relib
-            r = requests.get("https://t.me/s/graweinukraine", timeout=15)
+            r = requests.get("https://t.me/s/" + channel_name, timeout=15)
             if r.status_code != 200:
                 return None
             posts = relib.findall(
                 r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
                 r.text, relib.DOTALL
             )
-            ids = relib.findall(r'data-post="graweinukraine/([0-9]+)"', r.text)
+            ids = relib.findall(r'data-post="' + channel_name + r'/([0-9]+)"', r.text)
             if not posts or not ids:
                 return None
-            last_id = get_last_grawe_id()
+            try:
+                with open(last_file) as f:
+                    last_id = f.read().strip()
+            except:
+                last_id = ""
             for post_id, post_html in zip(ids, posts):
                 if post_id == last_id:
                     break
                 text = relib.sub(r'<[^>]+>', '', post_html).strip()
+                text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
                 if len(text) < 50:
                     continue
-                if any(kw in text.lower() for kw in GRAWE_KEYWORDS):
-                    save_last_grawe_id(ids[0])
-                    print("Found GRAWE news: " + text[:80])
+                if any(kw in text.lower() for kw in keywords):
+                    with open(last_file, "w") as f:
+                        f.write(ids[0])
+                    print("Found news from " + channel_name + ": " + text[:60])
                     return text
             if ids:
-                save_last_grawe_id(ids[0])
+                with open(last_file, "w") as f:
+                    f.write(ids[0])
             return None
         except Exception as e:
-            print("GRAWE fetch error: " + repr(e))
+            print("Channel " + channel_name + " error: " + repr(e))
+            return None
+
+    async def fetch_grawe_news():
+        return await fetch_channel_news("graweinukraine", GRAWE_KEYWORDS, "/tmp/last_grawe.txt")
+
+    async def fetch_liga_news():
+        try:
+            import re as relib
+            LIGA_LAST = "/tmp/last_liga.txt"
+            r = requests.get("https://finance.liga.net/ua/insurance", timeout=15,
+                           headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                return None
+            titles = relib.findall(r'<a[^>]*href="(/ua/[^"]+)"[^>]*class="[^"]*article[^"]*"[^>]*>([^<]+)</a>', r.text)
+            if not titles:
+                titles = relib.findall(r'href="(https://finance\.liga\.net/ua/[^"]+)"[^>]*>([^<<>]{20,})</a>', r.text)
+            try:
+                with open(LIGA_LAST) as f:
+                    last_url = f.read().strip()
+            except:
+                last_url = ""
+            for url, title in titles[:10]:
+                title = title.strip()
+                if not title or len(title) < 15:
+                    continue
+                if url == last_url:
+                    break
+                if any(kw in title.lower() for kw in PENSION_KEYWORDS + GRAWE_KEYWORDS):
+                    with open(LIGA_LAST, "w") as f:
+                        f.write(url)
+                    print("Liga news: " + title[:60])
+                    return title
+            if titles:
+                with open(LIGA_LAST, "w") as f:
+                    f.write(titles[0][0])
+            return None
+        except Exception as e:
+            print("Liga error: " + repr(e))
+            return None
+
+    async def fetch_harazd_news():
+        try:
+            import re as relib
+            HARAZD_LAST = "/tmp/last_harazd.txt"
+            r = requests.get("https://harazd.bank.gov.ua", timeout=15,
+                           headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                return None
+            articles = relib.findall(r'<a[^>]*href="([^"]+)"[^>]*>([^<]{20,})</a>', r.text)
+            try:
+                with open(HARAZD_LAST) as f:
+                    last_url = f.read().strip()
+            except:
+                last_url = ""
+            HARAZD_KEYWORDS = ["пенсі", "страхуван", "накопич", "інвест", "бюджет",
+                               "кредит", "депозит", "фінансов", "заощаджен"]
+            for url, title in articles[:15]:
+                title = title.strip()
+                if not title or len(title) < 15:
+                    continue
+                if url == last_url:
+                    break
+                if any(kw in title.lower() for kw in HARAZD_KEYWORDS):
+                    with open(HARAZD_LAST, "w") as f:
+                        f.write(url)
+                    full_url = url if url.startswith("http") else "https://harazd.bank.gov.ua" + url
+                    print("Harazd news: " + title[:60])
+                    return title + " (джерело: Гаразд — платформа фінансової грамотності НБУ)"
+            if articles:
+                with open(HARAZD_LAST, "w") as f:
+                    f.write(articles[0][0])
+            return None
+        except Exception as e:
+            print("Harazd error: " + repr(e))
+            return None
+
+    async def fetch_pfu_news():
+        try:
+            import re as relib
+            PFU_LAST_FILE = "/tmp/last_pfu.txt"
+            r = requests.get("https://www.pfu.gov.ua/news/", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                print("PFU fetch failed: " + str(r.status_code))
+                return None
+
+            # Extract news titles and links
+            titles = relib.findall(r'<h[23][^>]*class="[^"]*title[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>', r.text)
+            if not titles:
+                titles = relib.findall(r'<a[^>]*href="(/news/[^"]+)"[^>]*class="[^"]*"[^>]*>([^<]+)</a>', r.text)
+
+            if not titles:
+                print("PFU: no titles found")
+                return None
+
+            try:
+                with open(PFU_LAST_FILE) as f:
+                    last_url = f.read().strip()
+            except:
+                last_url = ""
+
+            for url, title in titles[:10]:
+                title = title.strip()
+                if not title or len(title) < 10:
+                    continue
+                if url == last_url:
+                    break
+                if any(kw in title.lower() for kw in PENSION_KEYWORDS):
+                    with open(PFU_LAST_FILE, "w") as f:
+                        f.write(url)
+                    # Try to get full article
+                    full_url = url if url.startswith("http") else "https://www.pfu.gov.ua" + url
+                    try:
+                        article = requests.get(full_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+                        text = relib.sub(r'<[^>]+>', ' ', article.text)
+                        text = relib.sub(r'\s+', ' ', text).strip()
+                        # Find relevant section
+                        idx = text.find(title)
+                        if idx > 0:
+                            text = title + ". " + text[idx+len(title):idx+len(title)+800]
+                        else:
+                            text = title
+                    except:
+                        text = title
+                    print("Found PFU news: " + title[:60])
+                    return text
+
+            if titles:
+                with open(PFU_LAST_FILE, "w") as f:
+                    f.write(titles[0][0])
+            return None
+        except Exception as e:
+            print("PFU error: " + repr(e))
             return None
 
     async def check_and_publish_news():
@@ -747,6 +894,27 @@ async def main():
             await publish_news_post(bot_news, grawe_news, target)
         else:
             print("No new GRAWE news today")
+
+        print("Checking PFU site...")
+        pfu_news = await fetch_pfu_news()
+        if pfu_news:
+            await publish_news_post(bot_news, pfu_news, target)
+        else:
+            print("No new PFU news today")
+
+        print("Checking Liga Finance...")
+        liga_news = await fetch_liga_news()
+        if liga_news:
+            await publish_news_post(bot_news, liga_news, target)
+        else:
+            print("No new Liga news today")
+
+        print("Checking Harazd...")
+        harazd_news = await fetch_harazd_news()
+        if harazd_news:
+            await publish_news_post(bot_news, harazd_news, target)
+        else:
+            print("No new Harazd news today")
 
     scheduler.add_job(
         check_and_publish_news,
