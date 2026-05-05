@@ -928,6 +928,34 @@ async def main():
         check_and_publish_news,
         CronTrigger(hour=21, minute=0, timezone=TIMEZONE)
     )
+
+    async def publish_urgent_post():
+        """One-time urgent post about MetLife/PZU deal"""
+        bot_urgent = Bot(token=TELEGRAM_TOKEN)
+        from telegram.request import HTTPXRequest
+        request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
+        bot_urgent = Bot(token=TELEGRAM_TOKEN, request=request)
+        topic = next((t for t in TOPICS if t["name"] == "grawe_metlife"), None)
+        if topic:
+            text = await generate_text(topic)
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
+            img_path = get_topic_image("grawe")
+            if img_path:
+                from PIL import Image as PILImage
+                import io as _io
+                pil_img = PILImage.open(img_path).convert("RGB")
+                pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
+                buf = _io.BytesIO()
+                pil_img.save(buf, "JPEG", quality=75)
+                buf.seek(0)
+                await bot_urgent.send_photo(chat_id=CHANNEL_ID, photo=buf)
+            await bot_urgent.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
+            print("Urgent MetLife post published!")
+
+    scheduler.add_job(
+        publish_urgent_post,
+        CronTrigger(hour=20, minute=0, timezone=TIMEZONE, day=str(__import__('datetime').datetime.now().day))
+    )
     scheduler.start()
     print("Test post in 5 sec...")
     await asyncio.sleep(5)
