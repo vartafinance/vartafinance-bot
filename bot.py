@@ -886,43 +886,32 @@ async def main():
             return None
 
     async def check_and_publish_news():
+        """Check all sources but publish maximum 1 news per day"""
         bot_news = Bot(token=TELEGRAM_TOKEN)
         target = CHANNEL_ID
 
-        print("Checking MinSocUA for pension news...")
-        news = await fetch_minsoc_news()
-        if news:
-            await publish_news_post(bot_news, news, target)
-        else:
-            print("No new pension news from MinSocUA")
+        sources = [
+            ("MinSocUA", fetch_minsoc_news),
+            ("GRAWE", fetch_grawe_news),
+            ("PFU", fetch_pfu_news),
+            ("Liga", fetch_liga_news),
+            ("Harazd", fetch_harazd_news),
+        ]
 
-        print("Checking GRAWE channel...")
-        grawe_news = await fetch_grawe_news()
-        if grawe_news:
-            await publish_news_post(bot_news, grawe_news, target)
-        else:
-            print("No new GRAWE news today")
+        for source_name, fetch_func in sources:
+            print("Checking " + source_name + "...")
+            try:
+                news = await fetch_func()
+                if news:
+                    await publish_news_post(bot_news, news, target)
+                    print("Published news from " + source_name + " — stopping for today")
+                    return  # Only 1 news per day!
+                else:
+                    print("No new news from " + source_name)
+            except Exception as e:
+                print("Error checking " + source_name + ": " + repr(e))
 
-        print("Checking PFU site...")
-        pfu_news = await fetch_pfu_news()
-        if pfu_news:
-            await publish_news_post(bot_news, pfu_news, target)
-        else:
-            print("No new PFU news today")
-
-        print("Checking Liga Finance...")
-        liga_news = await fetch_liga_news()
-        if liga_news:
-            await publish_news_post(bot_news, liga_news, target)
-        else:
-            print("No new Liga news today")
-
-        print("Checking Harazd...")
-        harazd_news = await fetch_harazd_news()
-        if harazd_news:
-            await publish_news_post(bot_news, harazd_news, target)
-        else:
-            print("No new Harazd news today")
+        print("No new news from any source today")
 
     scheduler.add_job(
         check_and_publish_news,
