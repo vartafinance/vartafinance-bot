@@ -9,10 +9,11 @@ import requests
 import json as _json
 
 PENDING_POSTS = {}  # Store posts waiting for approval
+
 import re
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -335,7 +336,8 @@ TOPICS = [
      "image_prompt": "Calm confident Ukrainian family at home feeling financially protected, warm safe atmosphere, illustration style",
      "poll_question": "Чи збільшили ви свою фінансову подушку під час війни?",
      "poll_options": ["Так, збільшила", "Намагаюсь", "Ні, немає можливості", "Не думала про це"]},
-    # METLIFE PZU — НОВИНА РИНКУ
+
+    # METLIFE PZU
     {"name": "grawe_metlife", "day": [0,1,2,3,4],
      "text": """Напиши пост про те що польська група PZU викупила 100% акцій MetLife Ukraine. Це звичайна бізнес-угода — консолідація ринку страхування в Східній Європі. Усі зобов'язання перед клієнтами залишаються в силі. Використай це як привід розповісти про GRAWE Ukraine — австрійський капітал з 175-річною історією, 27 років в Україні без жодних злиттів і змін власника. Поки ринок консолідується — GRAWE продовжує стабільно працювати. Закон 85/96-ВР. Щорічні відкладення від 25000 грн.""",
      "hook": "MetLife іде з України. А GRAWE — залишається.",
@@ -343,7 +345,7 @@ TOPICS = [
      "poll_question": "Чи важлива для вас стабільність власника страхової компанії?",
      "poll_options": ["Дуже важлива", "Важлива", "Не думала про це", "Головне умови полісу"]},
 
-    # GRAWE — NBU ВИЗНАННЯ
+    # GRAWE NBU
     {"name": "grawe_nbu", "day": [0,1,2,3,4],
      "text": """Напиши пост про те що НБУ вперше оприлюднив перелік значимих страховиків станом на 1 січня 2026 року і GRAWE Ukraine страхування життя увійшла до цього списку. Всього 13 компаній, лише дві — у сегменті страхування життя. Поясни що це означає для клієнта — посилений нагляд НБУ, надійність, захист. Згадай Закон 85/96-ВР та Положення НБУ №194. GRAWE 27 років на ринку — пережила всі кризи і продовжує виплати під час війни.""",
      "hook": "НБУ офіційно визнав GRAWE Ukraine значимою страховою компанією. Що це означає для тебе?",
@@ -371,10 +373,8 @@ COUNTER_FILE = "/tmp/varta_counter.txt"
 def get_counter():
     try:
         with open(COUNTER_FILE) as f:
-            val = int(f.read().strip())
-            return val
+            return int(f.read().strip())
     except:
-        # On fresh start, use day of year to avoid repeating same post
         import datetime
         val = datetime.datetime.now().timetuple().tm_yday * 3
         with open(COUNTER_FILE, "w") as f:
@@ -386,8 +386,8 @@ def inc_counter():
     with open(COUNTER_FILE, "w") as f:
         f.write(str(c))
 
-# Map topic names to local image files
 import random as _random
+
 TOPIC_IMAGES = {
     "pension": ["Gemini_Generated_Image_cdldk2cdldk2cdld.png"],
     "stazh": ["Gemini_Generated_Image_es1igwes1igwes1i.png"],
@@ -437,61 +437,6 @@ def wrap_text(draw, text, font, max_w):
         lines.append(line)
     return lines
 
-def wrap_text(draw, text, font, max_w):
-    words = text.split()
-    lines, line = [], ""
-    for w in words:
-        test = (line + " " + w).strip()
-        if draw.textbbox((0,0), test, font=font)[2] > max_w and line:
-            lines.append(line)
-            line = w
-        else:
-            line = test
-    if line:
-        lines.append(line)
-    return lines
-
-def create_varta_image(headline, photo_url=None):
-    import os as _os
-    W, H = 1080, 1080
-    PHOTO_Y = 160
-    PHOTO_H = 760
-
-    # Load Canva template
-    template_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "template.png")
-    if _os.path.exists(template_path):
-        img = Image.open(template_path).convert("RGB").resize((W, H))
-        print("Template loaded OK")
-    else:
-        img = Image.new("RGB", (W, H), DARK_BLUE)
-        print("Template not found, using fallback")
-
-    # Paste AI photo in middle area
-    if photo_url:
-        try:
-            r = requests.get(photo_url, timeout=20)
-            photo = Image.open(io.BytesIO(r.content)).convert("RGB")
-            photo = photo.resize((W, PHOTO_H), Image.LANCZOS)
-            img.paste(photo, (0, PHOTO_Y))
-            print("Photo pasted OK")
-        except Exception as e:
-            print("photo err: " + str(e))
-
-    # Redraw top brand bar over photo (so brand stays visible)
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, W, 155], fill=DARK_BLUE)
-    draw.rectangle([0, 0, W, 8], fill=GOLD)
-    draw.rectangle([0, 145, W, 155], fill=GOLD)
-
-    # Redraw bottom bar
-    draw.rectangle([0, H-95, W, H], fill=DARK_BLUE)
-    draw.rectangle([0, H-97, W, H-91], fill=GOLD)
-
-    buf = io.BytesIO()
-    img.save(buf, "PNG")
-    buf.seek(0)
-    return buf
-
 async def generate_text(topic):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = "*" + topic["hook"] + "*\n\n" + topic["text"]
@@ -503,169 +448,92 @@ async def generate_text(topic):
     )
     return msg.content[0].text
 
-async def generate_photo(prompt, retries=2):
-    import time
-    client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=120)
-    for attempt in range(retries):
-        try:
-            resp = client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                size="1024x1024",
-                quality="standard",
-                n=1
-            )
-            return resp.data[0].url
-        except Exception as e:
-            print("Photo attempt " + str(attempt+1) + " failed: " + str(e))
-            if attempt < retries - 1:
-                time.sleep(5)
-    return None
+# ─── CALLBACK HANDLER ────────────────────────────────────────────────────────
 
-async def get_minsoc_news(bot):
-    """Отримати останні новини з @MinSocUA через web preview"""
-    try:
-        url = "https://t.me/s/MinSocUA"
-        r = requests.get(url, timeout=10)
-        # Extract last post text
-        posts = re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', r.text, re.DOTALL)
-        if posts:
-            # Clean HTML tags
-            text = re.sub(r'<[^>]+>', '', posts[-1]).strip()
-            return text[:500] if len(text) > 500 else text
-    except Exception as e:
-        print("MinSoc parse error: " + str(e))
-    return None
+async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
+    data = query.data
 
-PENSION_KEYWORDS = [
-    "пенсі", "пфу", "пенсійн", "стаж", "єсв", "накопич",
-    "пенсіонер", "виплат", "пенсійного віку", "солідарн"
-]
+    if data == "no_forward":
+        # Just remove the forward buttons, keep consultation button if it was there
+        msg_id = str(query.message.message_id)
+        post_data = PENDING_POSTS.get(msg_id)
+        if post_data and post_data["show_button"]:
+            new_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
+            ]])
+            await query.edit_message_reply_markup(reply_markup=new_kb)
+        else:
+            await query.edit_message_reply_markup(reply_markup=None)
+        if msg_id in PENDING_POSTS:
+            del PENDING_POSTS[msg_id]
+        return
 
-GRAWE_KEYWORDS = [
-    "grawe", "страхуван", "накопич", "поліс", "виплат", "захист"
-]
+    if data.startswith("forward_"):
+        msg_id = str(query.message.message_id)
+        post_data = PENDING_POSTS.get(msg_id)
 
-GRAWE_NEWS_FILE = "/tmp/last_grawe_news.txt"
+        if not post_data:
+            await query.answer("Пост не знайдено або вже опубліковано 🤷", show_alert=True)
+            return
 
-def get_last_grawe_id():
-    try:
-        with open(GRAWE_NEWS_FILE) as f:
-            return f.read().strip()
-    except:
-        return ""
+        # Build keyboard for main channel — only consultation button, NO forward button
+        if post_data["show_button"]:
+            main_keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
+            ]])
+        else:
+            main_keyboard = None
 
-def save_last_grawe_id(news_id):
-    with open(GRAWE_NEWS_FILE, "w") as f:
-        f.write(news_id)
+        bot = context.bot
+        # Send image first if saved
+        if post_data.get("image_bytes"):
+            import io as _io
+            buf = _io.BytesIO(post_data["image_bytes"])
+            buf.seek(0)
+            await bot.send_photo(chat_id=CHANNEL_ID, photo=buf)
 
-LAST_NEWS_FILE = "/tmp/last_news.txt"
-
-def get_last_news_id():
-    try:
-        with open(LAST_NEWS_FILE) as f:
-            return f.read().strip()
-    except:
-        return ""
-
-def save_last_news_id(news_id):
-    with open(LAST_NEWS_FILE, "w") as f:
-        f.write(news_id)
-
-async def fetch_minsoc_news():
-    """Fetch pension-related news from MinSocUA"""
-    try:
-        import re as _re
-        r = requests.get("https://t.me/s/MinSocUA", timeout=15)
-        if r.status_code != 200:
-            print("MinSoc fetch failed: " + str(r.status_code))
-            return None
-
-        # Extract posts
-        posts = _re.findall(
-            r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
-            r.text, _re.DOTALL
+        await bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=post_data["text"],
+            parse_mode="Markdown",
+            reply_markup=main_keyboard
         )
-        ids = _re.findall(r'data-post="MinSocUA/(\d+)"', r.text)
 
-        if not posts or not ids:
-            return None
+        # Send poll to main channel too if saved
+        if post_data.get("poll_question"):
+            await bot.send_poll(
+                chat_id=CHANNEL_ID,
+                question=post_data["poll_question"],
+                options=post_data["poll_options"],
+                is_anonymous=True
+            )
 
-        last_id = get_last_news_id()
+        # Update test message: remove forward buttons, keep only consultation
+        if post_data["show_button"]:
+            done_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Опубліковано в основний", callback_data="done")
+            ]])
+        else:
+            done_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Опубліковано в основний", callback_data="done")
+            ]])
+        await query.edit_message_reply_markup(reply_markup=done_kb)
 
-        for i, (post_id, post_html) in enumerate(zip(ids, posts)):
-            # Skip already published
-            if post_id == last_id:
-                break
+        del PENDING_POSTS[msg_id]
+        print("Forwarded to main channel: " + post_data.get("topic_name", "?"))
 
-            # Clean HTML
-            text = _re.sub(r'<[^>]+>', '', post_html).strip()
-            text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&#39;', "'")
+    if data == "done":
+        await query.answer("Вже опубліковано ✅")
 
-            if len(text) < 50:
-                continue
 
-            # Check for pension keywords
-            text_lower = text.lower()
-            if any(kw in text_lower for kw in PENSION_KEYWORDS):
-                save_last_news_id(ids[0])  # Save most recent
-                print("Found pension news: " + text[:80])
-                return text
+# ─── PUBLISH POST ─────────────────────────────────────────────────────────────
 
-        save_last_news_id(ids[0] if ids else last_id)
-        return None
-
-    except Exception as e:
-        print("MinSoc error: " + repr(e))
-        return None
-
-async def publish_news_post(bot, news_text, target):
-    """Rewrite news in VartaFinance style and publish"""
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    prompt = (
-        "Ось новина від Міністерства соціальної політики України:\n\n" +
-        news_text +
-        "\n\nПерепиши цю новину для Telegram каналу @VartaFinance фінансового консультанта. "
-        "Стиль: коротко 2-3 абзаци, українською, без лапок, тон теплий. "
-        "Починай з жирного хуку через *текст*. "
-        "Поясни що ця новина означає для звичайної людини. "
-        "Закінчи закликом написати в особисті для консультації."
-    )
-
-    msg = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    post_text = msg.content[0].text
-
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
-
-    # Use law/finance image for news
-    img_path = get_topic_image("kzpp")
-    if img_path:
-        from PIL import Image as PILImage
-        import io as _io
-        pil_img = PILImage.open(img_path).convert("RGB")
-        pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
-        buf = _io.BytesIO()
-        pil_img.save(buf, "JPEG", quality=75)
-        buf.seek(0)
-        await bot.send_photo(chat_id=target, photo=buf)
-
-    await bot.send_message(chat_id=target, text=post_text, parse_mode="Markdown", reply_markup=keyboard)
-    print("News post published OK")
-    inc_counter()  # Increment counter so next regular post uses different image
-
-async def publish_post(test_mode=False, force_image=False):
-    target_channel = TEST_CHANNEL_ID  # All posts go to test first
-    from telegram.request import HTTPXRequest
-    request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
-    bot = Bot(token=TELEGRAM_TOKEN, request=request)
+async def publish_post(bot: Bot, test_mode=False, force_image=False):
     tz = pytz.timezone(TIMEZONE)
-    target = TEST_CHANNEL_ID  # All posts go to test first
+    target = TEST_CHANNEL_ID if TEST_CHANNEL_ID else CHANNEL_ID
     now = datetime.now(tz)
     topic = get_topic(now.weekday())
     counter = get_counter()
@@ -676,12 +544,14 @@ async def publish_post(test_mode=False, force_image=False):
 
     button_topics = ["life", "grawe", "dms", "pension", "solidarna", "cushion", "inflation"]
     show_button = any(topic["name"].startswith(t) for t in button_topics)
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]]) if show_button else None
+
+    consultation_btn = InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
 
     try:
         text = await generate_text(topic)
 
-        # Send local image (compressed)
+        # Save image bytes for possible forwarding
+        image_bytes = None
         img_path = get_topic_image(topic["name"])
         if img_path:
             print("Using local image: " + img_path)
@@ -691,17 +561,50 @@ async def publish_post(test_mode=False, force_image=False):
             pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
             buf = _io.BytesIO()
             pil_img.save(buf, "JPEG", quality=75)
+            image_bytes = buf.getvalue()
             buf.seek(0)
             await bot.send_photo(chat_id=target, photo=buf)
             print("Image sent OK")
         else:
             print("No local image for: " + topic["name"])
 
-        # Send text with button
-        await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
+        # Decide poll
+        will_poll = (get_counter() % 3 == 0)
+        poll_question = topic.get("poll_question") if will_poll else None
+        poll_options = topic.get("poll_options") if will_poll else None
 
-        # Every 3rd post add poll
-        if get_counter() % 3 == 0:
+        # Build keyboard
+        if TEST_CHANNEL_ID:
+            # Test channel: consultation + forward/skip buttons
+            forward_btn = InlineKeyboardButton("✅ Переслати в основний", callback_data="forward_" + topic["name"])
+            skip_btn = InlineKeyboardButton("❌ Не пересилати", callback_data="no_forward")
+            if show_button:
+                keyboard = InlineKeyboardMarkup([
+                    [consultation_btn],
+                    [forward_btn, skip_btn]
+                ])
+            else:
+                keyboard = InlineKeyboardMarkup([[forward_btn, skip_btn]])
+        else:
+            # No test channel — publish directly to main with only consultation
+            keyboard = InlineKeyboardMarkup([[consultation_btn]]) if show_button else None
+
+        msg = await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
+        print("Image sent OK")
+
+        # Store pending post for forwarding
+        if TEST_CHANNEL_ID:
+            PENDING_POSTS[str(msg.message_id)] = {
+                "text": text,
+                "show_button": show_button,
+                "topic_name": topic["name"],
+                "image_bytes": image_bytes,
+                "poll_question": poll_question,
+                "poll_options": poll_options,
+            }
+
+        # Poll in test channel only
+        if will_poll:
             await bot.send_poll(
                 chat_id=target,
                 question=topic.get("poll_question", "Що думаєте?"),
@@ -711,262 +614,270 @@ async def publish_post(test_mode=False, force_image=False):
             print("Poll sent OK")
 
         print("Post published OK")
+
     except Exception as e:
         print("Error: " + repr(e))
 
-async def main():
-    print("VartaFinance Bot started!")
-    scheduler = AsyncIOScheduler(timezone=TIMEZONE)
-    scheduler.add_job(
-        publish_post,
-        CronTrigger(
-            day_of_week=SCHEDULE_DAYS,
-            hour=SCHEDULE_HOUR,
-            minute=SCHEDULE_MINUTE,
-            timezone=TIMEZONE
-        )
-    )
 
-    async def fetch_channel_news(channel_name, keywords, last_file):
+# ─── NEWS ─────────────────────────────────────────────────────────────────────
+
+PENSION_KEYWORDS = [
+    "пенсі", "пфу", "пенсійн", "стаж", "єсв", "накопич",
+    "пенсіонер", "виплат", "пенсійного віку", "солідарн"
+]
+GRAWE_KEYWORDS = ["grawe", "страхуван", "накопич", "поліс", "виплат", "захист"]
+
+def get_last_news_id():
+    try:
+        with open("/tmp/last_news.txt") as f:
+            return f.read().strip()
+    except:
+        return ""
+
+def save_last_news_id(news_id):
+    with open("/tmp/last_news.txt", "w") as f:
+        f.write(news_id)
+
+async def fetch_minsoc_news():
+    try:
+        import re as _re
+        r = requests.get("https://t.me/s/MinSocUA", timeout=15)
+        if r.status_code != 200:
+            return None
+        posts = _re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', r.text, _re.DOTALL)
+        ids = _re.findall(r'data-post="MinSocUA/(\d+)"', r.text)
+        if not posts or not ids:
+            return None
+        last_id = get_last_news_id()
+        for post_id, post_html in zip(ids, posts):
+            if post_id == last_id:
+                break
+            text = _re.sub(r'<[^>]+>', '', post_html).strip()
+            text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&#39;', "'")
+            if len(text) < 50:
+                continue
+            if any(kw in text.lower() for kw in PENSION_KEYWORDS):
+                save_last_news_id(ids[0])
+                return text
+        save_last_news_id(ids[0] if ids else last_id)
+        return None
+    except Exception as e:
+        print("MinSoc error: " + repr(e))
+        return None
+
+async def fetch_channel_news(channel_name, keywords, last_file):
+    try:
+        import re as relib
+        r = requests.get("https://t.me/s/" + channel_name, timeout=15)
+        if r.status_code != 200:
+            return None
+        posts = relib.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', r.text, relib.DOTALL)
+        ids = relib.findall(r'data-post="' + channel_name + r'/([0-9]+)"', r.text)
+        if not posts or not ids:
+            return None
         try:
-            import re as relib
-            r = requests.get("https://t.me/s/" + channel_name, timeout=15)
-            if r.status_code != 200:
-                return None
-            posts = relib.findall(
-                r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
-                r.text, relib.DOTALL
-            )
-            ids = relib.findall(r'data-post="' + channel_name + r'/([0-9]+)"', r.text)
-            if not posts or not ids:
-                return None
-            try:
-                with open(last_file) as f:
-                    last_id = f.read().strip()
-            except:
-                last_id = ""
-            for post_id, post_html in zip(ids, posts):
-                if post_id == last_id:
-                    break
-                text = relib.sub(r'<[^>]+>', '', post_html).strip()
-                text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-                if len(text) < 50:
-                    continue
-                if any(kw in text.lower() for kw in keywords):
-                    with open(last_file, "w") as f:
-                        f.write(ids[0])
-                    print("Found news from " + channel_name + ": " + text[:60])
-                    return text
-            if ids:
+            with open(last_file) as f:
+                last_id = f.read().strip()
+        except:
+            last_id = ""
+        for post_id, post_html in zip(ids, posts):
+            if post_id == last_id:
+                break
+            text = relib.sub(r'<[^>]+>', '', post_html).strip()
+            text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            if len(text) < 50:
+                continue
+            if any(kw in text.lower() for kw in keywords):
                 with open(last_file, "w") as f:
                     f.write(ids[0])
-            return None
-        except Exception as e:
-            print("Channel " + channel_name + " error: " + repr(e))
-            return None
+                return text
+        if ids:
+            with open(last_file, "w") as f:
+                f.write(ids[0])
+        return None
+    except Exception as e:
+        print("Channel " + channel_name + " error: " + repr(e))
+        return None
 
-    async def fetch_grawe_news():
-        return await fetch_channel_news("graweinukraine", GRAWE_KEYWORDS, "/tmp/last_grawe.txt")
+async def fetch_grawe_news():
+    return await fetch_channel_news("graweinukraine", GRAWE_KEYWORDS, "/tmp/last_grawe.txt")
 
-    async def fetch_liga_news():
+async def fetch_pfu_news():
+    try:
+        import re as relib
+        r = requests.get("https://www.pfu.gov.ua/news/", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code != 200:
+            return None
+        titles = relib.findall(r'<h[23][^>]*class="[^"]*title[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>', r.text)
+        if not titles:
+            titles = relib.findall(r'<a[^>]*href="(/news/[^"]+)"[^>]*class="[^"]*"[^>]*>([^<]+)</a>', r.text)
+        if not titles:
+            return None
+        PFU_LAST_FILE = "/tmp/last_pfu.txt"
         try:
-            import re as relib
-            LIGA_LAST = "/tmp/last_liga.txt"
-            r = requests.get("https://finance.liga.net/ua/insurance", timeout=15,
-                           headers={"User-Agent": "Mozilla/5.0"})
-            if r.status_code != 200:
-                return None
-            titles = relib.findall(r'<a[^>]*href="(/ua/[^"]+)"[^>]*class="[^"]*article[^"]*"[^>]*>([^<]+)</a>', r.text)
-            if not titles:
-                titles = relib.findall(r'href="(https://finance\.liga\.net/ua/[^"]+)"[^>]*>([^<<>]{20,})</a>', r.text)
-            try:
-                with open(LIGA_LAST) as f:
-                    last_url = f.read().strip()
-            except:
-                last_url = ""
-            for url, title in titles[:10]:
-                title = title.strip()
-                if not title or len(title) < 15:
-                    continue
-                if url == last_url:
-                    break
-                if any(kw in title.lower() for kw in PENSION_KEYWORDS + GRAWE_KEYWORDS):
-                    with open(LIGA_LAST, "w") as f:
-                        f.write(url)
-                    print("Liga news: " + title[:60])
-                    return title
-            if titles:
-                with open(LIGA_LAST, "w") as f:
-                    f.write(titles[0][0])
-            return None
-        except Exception as e:
-            print("Liga error: " + repr(e))
-            return None
-
-    async def fetch_harazd_news():
-        try:
-            import re as relib
-            HARAZD_LAST = "/tmp/last_harazd.txt"
-            r = requests.get("https://harazd.bank.gov.ua", timeout=15,
-                           headers={"User-Agent": "Mozilla/5.0"})
-            if r.status_code != 200:
-                return None
-            articles = relib.findall(r'<a[^>]*href="([^"]+)"[^>]*>([^<]{20,})</a>', r.text)
-            try:
-                with open(HARAZD_LAST) as f:
-                    last_url = f.read().strip()
-            except:
-                last_url = ""
-            HARAZD_KEYWORDS = ["пенсі", "страхуван", "накопич", "інвест", "бюджет",
-                               "кредит", "депозит", "фінансов", "заощаджен"]
-            for url, title in articles[:15]:
-                title = title.strip()
-                if not title or len(title) < 15:
-                    continue
-                if url == last_url:
-                    break
-                if any(kw in title.lower() for kw in HARAZD_KEYWORDS):
-                    with open(HARAZD_LAST, "w") as f:
-                        f.write(url)
-                    full_url = url if url.startswith("http") else "https://harazd.bank.gov.ua" + url
-                    print("Harazd news: " + title[:60])
-                    return title + " (джерело: Гаразд — платформа фінансової грамотності НБУ)"
-            if articles:
-                with open(HARAZD_LAST, "w") as f:
-                    f.write(articles[0][0])
-            return None
-        except Exception as e:
-            print("Harazd error: " + repr(e))
-            return None
-
-    async def fetch_pfu_news():
-        try:
-            import re as relib
-            PFU_LAST_FILE = "/tmp/last_pfu.txt"
-            r = requests.get("https://www.pfu.gov.ua/news/", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-            if r.status_code != 200:
-                print("PFU fetch failed: " + str(r.status_code))
-                return None
-
-            # Extract news titles and links
-            titles = relib.findall(r'<h[23][^>]*class="[^"]*title[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>', r.text)
-            if not titles:
-                titles = relib.findall(r'<a[^>]*href="(/news/[^"]+)"[^>]*class="[^"]*"[^>]*>([^<]+)</a>', r.text)
-
-            if not titles:
-                print("PFU: no titles found")
-                return None
-
-            try:
-                with open(PFU_LAST_FILE) as f:
-                    last_url = f.read().strip()
-            except:
-                last_url = ""
-
-            for url, title in titles[:10]:
-                title = title.strip()
-                if not title or len(title) < 10:
-                    continue
-                if url == last_url:
-                    break
-                if any(kw in title.lower() for kw in PENSION_KEYWORDS):
-                    with open(PFU_LAST_FILE, "w") as f:
-                        f.write(url)
-                    # Try to get full article
-                    full_url = url if url.startswith("http") else "https://www.pfu.gov.ua" + url
-                    try:
-                        article = requests.get(full_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-                        text = relib.sub(r'<[^>]+>', ' ', article.text)
-                        text = relib.sub(r'\s+', ' ', text).strip()
-                        # Find relevant section
-                        idx = text.find(title)
-                        if idx > 0:
-                            text = title + ". " + text[idx+len(title):idx+len(title)+800]
-                        else:
-                            text = title
-                    except:
-                        text = title
-                    print("Found PFU news: " + title[:60])
-                    return text
-
-            if titles:
+            with open(PFU_LAST_FILE) as f:
+                last_url = f.read().strip()
+        except:
+            last_url = ""
+        for url, title in titles[:10]:
+            title = title.strip()
+            if not title or len(title) < 10:
+                continue
+            if url == last_url:
+                break
+            if any(kw in title.lower() for kw in PENSION_KEYWORDS):
                 with open(PFU_LAST_FILE, "w") as f:
-                    f.write(titles[0][0])
-            return None
+                    f.write(url)
+                full_url = url if url.startswith("http") else "https://www.pfu.gov.ua" + url
+                try:
+                    article = requests.get(full_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+                    text = relib.sub(r'<[^>]+>', ' ', article.text)
+                    text = relib.sub(r'\s+', ' ', text).strip()
+                    idx = text.find(title)
+                    if idx > 0:
+                        text = title + ". " + text[idx+len(title):idx+len(title)+800]
+                    else:
+                        text = title
+                except:
+                    text = title
+                return text
+        if titles:
+            with open(PFU_LAST_FILE, "w") as f:
+                f.write(titles[0][0])
+        return None
+    except Exception as e:
+        print("PFU error: " + repr(e))
+        return None
+
+async def publish_news_post(bot: Bot, news_text, target):
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    prompt = (
+        "Ось новина від Міністерства соціальної політики України:\n\n" + news_text +
+        "\n\nПерепиши цю новину для Telegram каналу @VartaFinance фінансового консультанта. "
+        "Стиль: коротко 2-3 абзаци, українською, без лапок, тон теплий. "
+        "Починай з жирного хуку через *текст*. "
+        "Поясни що ця новина означає для звичайної людини. "
+        "Закінчи закликом написати в особисті для консультації."
+    )
+    msg = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=600,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    post_text = msg.content[0].text
+
+    consultation_btn = InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
+
+    img_path = get_topic_image("kzpp")
+    image_bytes = None
+    if img_path:
+        from PIL import Image as PILImage
+        import io as _io
+        pil_img = PILImage.open(img_path).convert("RGB")
+        pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
+        buf = _io.BytesIO()
+        pil_img.save(buf, "JPEG", quality=75)
+        image_bytes = buf.getvalue()
+        buf.seek(0)
+        await bot.send_photo(chat_id=target, photo=buf)
+
+    if TEST_CHANNEL_ID:
+        forward_btn = InlineKeyboardButton("✅ Переслати в основний", callback_data="forward_news")
+        skip_btn = InlineKeyboardButton("❌ Не пересилати", callback_data="no_forward")
+        keyboard = InlineKeyboardMarkup([
+            [consultation_btn],
+            [forward_btn, skip_btn]
+        ])
+    else:
+        keyboard = InlineKeyboardMarkup([[consultation_btn]])
+
+    msg_out = await bot.send_message(chat_id=target, text=post_text, parse_mode="Markdown", reply_markup=keyboard)
+
+    if TEST_CHANNEL_ID:
+        PENDING_POSTS[str(msg_out.message_id)] = {
+            "text": post_text,
+            "show_button": True,
+            "topic_name": "news",
+            "image_bytes": image_bytes,
+            "poll_question": None,
+            "poll_options": None,
+        }
+
+    print("News post published OK")
+    inc_counter()
+
+async def check_and_publish_news(bot: Bot):
+    target = TEST_CHANNEL_ID if TEST_CHANNEL_ID else CHANNEL_ID
+    sources = [
+        ("MinSocUA", fetch_minsoc_news),
+        ("GRAWE", fetch_grawe_news),
+        ("PFU", fetch_pfu_news),
+    ]
+    for source_name, fetch_func in sources:
+        print("Checking " + source_name + "...")
+        try:
+            news = await fetch_func()
+            if news:
+                await publish_news_post(bot, news, target)
+                print("Published news from " + source_name)
+                return
+            else:
+                print("No new news from " + source_name)
         except Exception as e:
-            print("PFU error: " + repr(e))
-            return None
+            print("Error checking " + source_name + ": " + repr(e))
+    print("No new news from any source today")
 
-    async def check_and_publish_news():
-        """Check all sources but publish maximum 1 news per day"""
-        from telegram.request import HTTPXRequest as _HTTPXRequest
-        _request = _HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
-        bot_news = Bot(token=TELEGRAM_TOKEN, request=_request)
-        target = TEST_CHANNEL_ID  # News also go to test first
 
-        sources = [
-            ("MinSocUA", fetch_minsoc_news),
-            ("GRAWE", fetch_grawe_news),
-            ("PFU", fetch_pfu_news),
-            ("Liga", fetch_liga_news),
-            ("Harazd", fetch_harazd_news),
-        ]
+# ─── MAIN ─────────────────────────────────────────────────────────────────────
 
-        for source_name, fetch_func in sources:
-            print("Checking " + source_name + "...")
-            try:
-                news = await fetch_func()
-                if news:
-                    await publish_news_post(bot_news, news, target)
-                    print("Published news from " + source_name + " — stopping for today")
-                    return  # Only 1 news per day!
-                else:
-                    print("No new news from " + source_name)
-            except Exception as e:
-                print("Error checking " + source_name + ": " + repr(e))
+async def main():
+    print("VartaFinance Bot started!")
 
-        print("No new news from any source today")
+    from telegram.request import HTTPXRequest
+    request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
 
+    # Build Application (handles polling + callbacks)
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CallbackQueryHandler(handle_forward))
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+
+    bot = app.bot
+
+    scheduler = AsyncIOScheduler(timezone=TIMEZONE)
+
+    # Regular posts Mon/Wed/Fri at 10:00
     scheduler.add_job(
-        check_and_publish_news,
-        CronTrigger(hour=21, minute=0, timezone=TIMEZONE)
+        publish_post,
+        CronTrigger(day_of_week=SCHEDULE_DAYS, hour=SCHEDULE_HOUR, minute=SCHEDULE_MINUTE, timezone=TIMEZONE),
+        kwargs={"bot": bot}
     )
 
-    async def publish_urgent_post():
-        """One-time urgent post about MetLife/PZU deal"""
-        bot_urgent = Bot(token=TELEGRAM_TOKEN)
-        from telegram.request import HTTPXRequest
-        request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
-        bot_urgent = Bot(token=TELEGRAM_TOKEN, request=request)
-        topic = next((t for t in TOPICS if t["name"] == "grawe_metlife"), None)
-        if topic:
-            text = await generate_text(topic)
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]])
-            img_path = get_topic_image("grawe")
-            if img_path:
-                from PIL import Image as PILImage
-                import io as _io
-                pil_img = PILImage.open(img_path).convert("RGB")
-                pil_img = pil_img.resize((800, 450), PILImage.LANCZOS)
-                buf = _io.BytesIO()
-                pil_img.save(buf, "JPEG", quality=75)
-                buf.seek(0)
-                await bot_urgent.send_photo(chat_id=TEST_CHANNEL_ID, photo=buf)
-            await bot_urgent.send_message(chat_id=TEST_CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
-            print("Urgent MetLife post published!")
+    # News check daily at 21:00
+    scheduler.add_job(
+        check_and_publish_news,
+        CronTrigger(hour=21, minute=0, timezone=TIMEZONE),
+        kwargs={"bot": bot}
+    )
 
-    # Urgent post removed after publishing
     scheduler.start()
+
     print("Test post in 5 sec...")
     await asyncio.sleep(5)
-    # Force image on startup test
-    await publish_post(test_mode=False, force_image=True)
+    await publish_post(bot=bot, test_mode=False, force_image=True)
     print("Running...")
+
     try:
         while True:
             await asyncio.sleep(60)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
