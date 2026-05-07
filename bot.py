@@ -471,7 +471,8 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del PENDING_POSTS[msg_id]
         return
 
-    if data.startswith("forward_"):
+    if data.startswith("forward_") or data.startswith("forwardclean_"):
+        clean = data.startswith("forwardclean_")
         msg_id = str(query.message.message_id)
         post_data = PENDING_POSTS.get(msg_id)
 
@@ -479,8 +480,8 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("Пост не знайдено або вже опубліковано 🤷", show_alert=True)
             return
 
-        # Build keyboard for main channel — only consultation button, NO forward button
-        if post_data["show_button"]:
+        # Build keyboard for main channel
+        if post_data["show_button"] and not clean:
             main_keyboard = InlineKeyboardMarkup([[
                 InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
             ]])
@@ -576,15 +577,20 @@ async def publish_post(bot: Bot, test_mode=False, force_image=False):
         # Build keyboard
         if TEST_CHANNEL_ID:
             # Test channel: consultation + forward/skip buttons
-            forward_btn = InlineKeyboardButton("✅ Переслати в основний", callback_data="forward_" + topic["name"])
+            forward_btn = InlineKeyboardButton("✅ З кнопкою", callback_data="forward_" + topic["name"])
+            forward_no_btn = InlineKeyboardButton("📨 Без кнопки", callback_data="forwardclean_" + topic["name"])
             skip_btn = InlineKeyboardButton("❌ Не пересилати", callback_data="no_forward")
             if show_button:
                 keyboard = InlineKeyboardMarkup([
                     [consultation_btn],
-                    [forward_btn, skip_btn]
+                    [forward_btn, forward_no_btn],
+                    [skip_btn]
                 ])
             else:
-                keyboard = InlineKeyboardMarkup([[forward_btn, skip_btn]])
+                keyboard = InlineKeyboardMarkup([
+                    [forward_btn, forward_no_btn],
+                    [skip_btn]
+                ])
         else:
             # No test channel — publish directly to main with only consultation
             keyboard = InlineKeyboardMarkup([[consultation_btn]]) if show_button else None
@@ -782,11 +788,13 @@ async def publish_news_post(bot: Bot, news_text, target):
         await bot.send_photo(chat_id=target, photo=buf)
 
     if TEST_CHANNEL_ID:
-        forward_btn = InlineKeyboardButton("✅ Переслати в основний", callback_data="forward_news")
+        forward_btn = InlineKeyboardButton("✅ З кнопкою", callback_data="forward_news")
+        forward_no_btn = InlineKeyboardButton("📨 Без кнопки", callback_data="forwardclean_news")
         skip_btn = InlineKeyboardButton("❌ Не пересилати", callback_data="no_forward")
         keyboard = InlineKeyboardMarkup([
             [consultation_btn],
-            [forward_btn, skip_btn]
+            [forward_btn, forward_no_btn],
+            [skip_btn]
         ])
     else:
         keyboard = InlineKeyboardMarkup([[consultation_btn]])
