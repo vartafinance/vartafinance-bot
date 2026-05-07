@@ -660,12 +660,12 @@ async def publish_news_post(bot, news_text, target):
     inc_counter()  # Increment counter so next regular post uses different image
 
 async def publish_post(test_mode=False, force_image=False):
-    target_channel = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
+    target_channel = TEST_CHANNEL_ID  # All posts go to test first
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
     bot = Bot(token=TELEGRAM_TOKEN, request=request)
     tz = pytz.timezone(TIMEZONE)
-    target = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
+    target = TEST_CHANNEL_ID  # All posts go to test first
     now = datetime.now(tz)
     topic = get_topic(now.weekday())
     counter = get_counter()
@@ -902,7 +902,7 @@ async def main():
         from telegram.request import HTTPXRequest as _HTTPXRequest
         _request = _HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
         bot_news = Bot(token=TELEGRAM_TOKEN, request=_request)
-        target = CHANNEL_ID
+        target = TEST_CHANNEL_ID  # News also go to test first
 
         sources = [
             ("MinSocUA", fetch_minsoc_news),
