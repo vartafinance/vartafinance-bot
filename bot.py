@@ -6,9 +6,13 @@ from datetime import datetime
 import anthropic
 import openai
 import requests
+import json as _json
+
+PENDING_POSTS = {}  # Store posts waiting for approval
 import re
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CallbackQueryHandler
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -32,7 +36,13 @@ FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 SYSTEM_PROMPT = """Ти — фінансовий консультант Оксана Берман, пишеш пости для Telegram каналу @VartaFinance.
 
-ВАЖЛИВО: Коли згадуєш накопичення — завжди пиши про ЩОРІЧНІ відкладення, не щомісячні. Для прикладу використовуй суму 25000 грн на рік. НЕ згадуй НПФ або недержавні пенсійні фонди. Замість цього згадуй страхову компанію GRAWE Ukraine як інструмент накопичення і захисту.
+ВАЖЛИВО: Коли згадуєш накопичення — завжди пиши про ЩОРІЧНІ відкладення, не щомісячні. Для прикладу використовуй суму 25000 грн на рік. НЕ згадуй НПФ або недержавні пенсійні фонди. Згадуй тільки страхову компанію GRAWE Ukraine.
+Продукти GRAWE Ukraine які можна згадувати:
+- Накопичувальне страхування життя (приватна пенсія)
+- Накопичення на дитину
+- Захист від критичних хвороб
+- Захист здоров'я (ДМС)
+- Страхування від нещасних випадків
 
 СТРУКТУРА ПОСТА:
 1. ХУК — перший рядок ОБОВЯЗКОВО жирним. Використай саме цей формат: *твій хук тут* (зірочка на початку і в кінці). Хук має бути влучним і несподіваним. Наприклад: *Більшість українців залишаться без пенсії. І навіть не здогадуються.*
@@ -327,7 +337,7 @@ TOPICS = [
      "poll_options": ["Так, збільшила", "Намагаюсь", "Ні, немає можливості", "Не думала про це"]},
     # METLIFE PZU — НОВИНА РИНКУ
     {"name": "grawe_metlife", "day": [0,1,2,3,4],
-     "text": """Напиши пост про те що польська група PZU викупила 100% акцій MetLife Ukraine і американська корпорація повністю виходить з українського ринку. Поясни що це означає для клієнтів — невизначеність при зміні власника, нові процеси, нова філософія. Порівняй з GRAWE Ukraine — австрійський капітал 175 років, 27 років в Україні, жодних злиттів. Закон 85/96-ВР. Щорічні відкладення від 25000 грн. Стабільність австрійського підходу.""",
+     "text": """Напиши пост про те що польська група PZU викупила 100% акцій MetLife Ukraine. Це звичайна бізнес-угода — консолідація ринку страхування в Східній Європі. Усі зобов'язання перед клієнтами залишаються в силі. Використай це як привід розповісти про GRAWE Ukraine — австрійський капітал з 175-річною історією, 27 років в Україні без жодних злиттів і змін власника. Поки ринок консолідується — GRAWE продовжує стабільно працювати. Закон 85/96-ВР. Щорічні відкладення від 25000 грн.""",
      "hook": "MetLife іде з України. А GRAWE — залишається.",
      "image_prompt": "Confident Ukrainian family choosing reliable insurance, stable home atmosphere, security concept, illustration style",
      "poll_question": "Чи важлива для вас стабільність власника страхової компанії?",
@@ -361,11 +371,12 @@ COUNTER_FILE = "/tmp/varta_counter.txt"
 def get_counter():
     try:
         with open(COUNTER_FILE) as f:
-            return int(f.read().strip())
+            val = int(f.read().strip())
+            return val
     except:
-        # Init based on current hour to avoid repeating same post after restart
-        import time
-        val = int(time.time()) % 100
+        # On fresh start, use day of year to avoid repeating same post
+        import datetime
+        val = datetime.datetime.now().timetuple().tm_yday * 3
         with open(COUNTER_FILE, "w") as f:
             f.write(str(val))
         return val
@@ -646,6 +657,7 @@ async def publish_news_post(bot, news_text, target):
 
     await bot.send_message(chat_id=target, text=post_text, parse_mode="Markdown", reply_markup=keyboard)
     print("News post published OK")
+    inc_counter()  # Increment counter so next regular post uses different image
 
 async def publish_post(test_mode=False, force_image=False):
     target_channel = TEST_CHANNEL_ID if (test_mode and TEST_CHANNEL_ID) else CHANNEL_ID
@@ -662,7 +674,7 @@ async def publish_post(test_mode=False, force_image=False):
 
     print("Topic: " + topic["name"] + " | " + ("image" if use_image else "poll"))
 
-    button_topics = ["life", "grawe", "dms", "pension", "solidarna", "psych", "inflation", "cushion", "budget"]
+    button_topics = ["life", "grawe", "dms", "pension", "solidarna", "cushion", "inflation"]
     show_button = any(topic["name"].startswith(t) for t in button_topics)
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")]]) if show_button else None
 
@@ -887,7 +899,9 @@ async def main():
 
     async def check_and_publish_news():
         """Check all sources but publish maximum 1 news per day"""
-        bot_news = Bot(token=TELEGRAM_TOKEN)
+        from telegram.request import HTTPXRequest as _HTTPXRequest
+        _request = _HTTPXRequest(connection_pool_size=8, read_timeout=60, write_timeout=60, connect_timeout=30)
+        bot_news = Bot(token=TELEGRAM_TOKEN, request=_request)
         target = CHANNEL_ID
 
         sources = [
@@ -937,14 +951,11 @@ async def main():
                 buf = _io.BytesIO()
                 pil_img.save(buf, "JPEG", quality=75)
                 buf.seek(0)
-                await bot_urgent.send_photo(chat_id=CHANNEL_ID, photo=buf)
-            await bot_urgent.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
+                await bot_urgent.send_photo(chat_id=TEST_CHANNEL_ID, photo=buf)
+            await bot_urgent.send_message(chat_id=TEST_CHANNEL_ID, text=text, parse_mode="Markdown", reply_markup=keyboard)
             print("Urgent MetLife post published!")
 
-    scheduler.add_job(
-        publish_urgent_post,
-        CronTrigger(hour=20, minute=0, timezone=TIMEZONE, day=str(__import__('datetime').datetime.now().day))
-    )
+    # Urgent post removed after publishing
     scheduler.start()
     print("Test post in 5 sec...")
     await asyncio.sleep(5)
