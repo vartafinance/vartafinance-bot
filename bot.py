@@ -489,6 +489,10 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
             main_keyboard = None
 
         bot = context.bot
+
+        # Беремо АКТУАЛЬНИЙ текст з повідомлення (після можливого редагування)
+        current_text = query.message.text or post_data["text"]
+
         # Send image first if saved
         if post_data.get("image_bytes"):
             import io as _io
@@ -498,7 +502,7 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await bot.send_message(
             chat_id=CHANNEL_ID,
-            text=post_data["text"],
+            text=current_text,
             parse_mode="Markdown",
             reply_markup=main_keyboard
         )
