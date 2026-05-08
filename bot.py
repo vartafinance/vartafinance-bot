@@ -13,7 +13,7 @@ PENDING_POSTS = {}  # Store posts waiting for approval
 import re
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -840,6 +840,63 @@ async def check_and_publish_news(bot: Bot):
     print("No new news from any source today")
 
 
+
+# ─── MANUAL POST HANDLER ─────────────────────────────────────────────────────
+
+async def handle_test_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Додає кнопки пересилання до ручних постів в тест-каналі"""
+    msg = update.channel_post
+    if not msg:
+        return
+
+    # Перевіряємо що це саме тест-канал
+    chat_id_str = str(msg.chat_id)
+    test_id_str = str(TEST_CHANNEL_ID)
+    username_match = (
+        msg.chat.username and TEST_CHANNEL_ID.lstrip("@") == msg.chat.username
+    )
+    if chat_id_str != test_id_str and not username_match:
+        return
+
+    # Пропускаємо якщо кнопки вже є (пости від бота)
+    if msg.reply_markup:
+        return
+
+    # Пропускаємо опитування та медіа без тексту
+    text = msg.text or msg.caption
+    if not text:
+        return
+
+    msg_id = str(msg.message_id)
+
+    forward_btn = InlineKeyboardButton("✅ З кнопкою", callback_data="forward_manual")
+    forward_no_btn = InlineKeyboardButton("📨 Без кнопки", callback_data="forwardclean_manual")
+    skip_btn = InlineKeyboardButton("❌ Не пересилати", callback_data="no_forward")
+
+    keyboard = InlineKeyboardMarkup([
+        [forward_btn, forward_no_btn],
+        [skip_btn]
+    ])
+
+    try:
+        await context.bot.edit_message_reply_markup(
+            chat_id=msg.chat_id,
+            message_id=msg.message_id,
+            reply_markup=keyboard
+        )
+        # Зберігаємо для пересилання
+        PENDING_POSTS[msg_id] = {
+            "text": text,
+            "show_button": True,
+            "topic_name": "manual",
+            "image_bytes": None,
+            "poll_question": None,
+            "poll_options": None,
+        }
+        print("Added forward buttons to manual post: " + str(msg_id))
+    except Exception as e:
+        print("Could not add buttons to manual post: " + repr(e))
+
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 async def main():
@@ -851,6 +908,14 @@ async def main():
     # Build Application (handles polling + callbacks)
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CallbackQueryHandler(handle_forward))
+
+    # Handle manual posts in test channel
+    if TEST_CHANNEL_ID:
+        test_username = TEST_CHANNEL_ID.lstrip("@")
+        app.add_handler(MessageHandler(
+            filters.ChatType.CHANNEL,
+            handle_test_channel_post
+        ))
 
     await app.initialize()
     await app.start()
