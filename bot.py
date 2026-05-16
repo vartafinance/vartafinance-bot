@@ -240,10 +240,86 @@ USED_POLL_FILE = "/tmp/used_poll.txt"
 def get_used(filepath):
     try:
         with open(filepath) as f:
-            content = f.read().strip()
-            return set(content.split(",")) if content else set()
+            c = f.read().strip()
+            return set(c.split(",")) if c else set()
     except:
         return set()
+
+# ─── ЗБЕРЕЖЕННЯ PENDING ПОСТІВ НА ДИСК ───────────────────────────────────────
+import pickle as _pickle
+
+PENDING_DIR = "/tmp/varta_pending"
+
+def _ensure_pending_dir():
+    import os as _os
+    if not _os.path.exists(PENDING_DIR):
+        _os.makedirs(PENDING_DIR)
+
+def save_pending(msg_id, data):
+    """Зберігає пост на диск і в память"""
+    _ensure_pending_dir()
+    # Зберігаємо image_bytes окремо щоб не було проблем з розміром
+    img_bytes = data.get("image_bytes")
+    meta = {k: v for k, v in data.items() if k != "image_bytes"}
+    
+    # Зберігаємо метадані
+    with open(PENDING_DIR + "/" + msg_id + ".meta", "wb") as f:
+        _pickle.dump(meta, f)
+    
+    # Зберігаємо зображення якщо є
+    if img_bytes:
+        with open(PENDING_DIR + "/" + msg_id + ".img", "wb") as f:
+            f.write(img_bytes)
+        print("Pending saved to disk: " + msg_id + " (with image " + str(len(img_bytes)) + " bytes)")
+    else:
+        print("Pending saved to disk: " + msg_id + " (no image)")
+    
+    # Також тримаємо в памяті
+    PENDING_POSTS[msg_id] = data
+
+def load_pending(msg_id):
+    """Завантажує пост з диску якщо немає в памяті"""
+    import os as _os
+    
+    # Спочатку перевіряємо память
+    if msg_id in PENDING_POSTS:
+        return PENDING_POSTS[msg_id]
+    
+    # Якщо немає в памяті — завантажуємо з диску
+    meta_path = PENDING_DIR + "/" + msg_id + ".meta"
+    img_path = PENDING_DIR + "/" + msg_id + ".img"
+    
+    if not _os.path.exists(meta_path):
+        print("No pending data on disk for: " + msg_id)
+        return None
+    
+    try:
+        with open(meta_path, "rb") as f:
+            meta = _pickle.load(f)
+        
+        img_bytes = None
+        if _os.path.exists(img_path):
+            with open(img_path, "rb") as f:
+                img_bytes = f.read()
+            print("Loaded pending from disk: " + msg_id + " (image " + str(len(img_bytes)) + " bytes)")
+        else:
+            print("Loaded pending from disk: " + msg_id + " (no image)")
+        
+        meta["image_bytes"] = img_bytes
+        PENDING_POSTS[msg_id] = meta
+        return meta
+    except Exception as e:
+        print("Load pending error: " + repr(e))
+        return None
+
+def delete_pending(msg_id):
+    """Видаляє пост з памяті і диску"""
+    import os as _os
+    PENDING_POSTS.pop(msg_id, None)
+    for ext in [".meta", ".img"]:
+        path = PENDING_DIR + "/" + msg_id + ext
+        if _os.path.exists(path):
+            _os.remove(path)
 
 def save_used(filepath, used_set):
     with open(filepath, "w") as f:
@@ -329,6 +405,7 @@ async def generate_text(system_prompt, hook, text_prompt):
 async def send_image(bot, chat_id, topic_name):
     img_path = get_topic_image(topic_name)
     if not img_path:
+        print("No image found for topic: " + topic_name)
         return None
     try:
         from PIL import Image as PILImage
@@ -340,7 +417,7 @@ async def send_image(bot, chat_id, topic_name):
         image_bytes = buf.getvalue()
         buf.seek(0)
         await bot.send_photo(chat_id=chat_id, photo=buf)
-        print("Image sent: " + img_path)
+        print("Image sent OK: " + img_path + " (" + str(len(image_bytes)) + " bytes)")
         return image_bytes
     except Exception as e:
         print("Image error: " + repr(e))
@@ -381,21 +458,20 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "no_forward":
         msg_id = str(query.message.message_id)
-        post_data = PENDING_POSTS.get(msg_id)
+        post_data = load_pending(msg_id)
         if post_data and post_data.get("with_button"):
             await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("💬 Хочу консультацію", url="https://t.me/BermanOdesa")
             ]]))
         else:
             await query.edit_message_reply_markup(reply_markup=None)
-        if msg_id in PENDING_POSTS:
-            del PENDING_POSTS[msg_id]
+        delete_pending(msg_id)
         return
 
     if data.startswith("forward_") or data.startswith("forwardclean_"):
         clean = data.startswith("forwardclean_")
         msg_id = str(query.message.message_id)
-        post_data = PENDING_POSTS.get(msg_id)
+        post_data = load_pending(msg_id)
 
         if not post_data:
             await query.answer("Пост не знайдено або вже опубліковано 🤷", show_alert=True)
@@ -407,11 +483,20 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Беремо актуальний текст (після можливого редагування)
         current_text = query.message.text or post_data["text"]
 
-        if post_data.get("image_bytes"):
-            import io as _io
-            buf = _io.BytesIO(post_data["image_bytes"])
-            buf.seek(0)
-            await bot.send_photo(chat_id=CHANNEL_ID, photo=buf)
+        # Відправляємо зображення
+        img_bytes = post_data.get("image_bytes")
+        print("Forward image_bytes: " + (str(len(img_bytes)) + " bytes" if img_bytes else "None — no image will be sent"))
+        if img_bytes:
+            try:
+                import io as _io
+                buf = _io.BytesIO(img_bytes)
+                buf.seek(0)
+                await bot.send_photo(chat_id=CHANNEL_ID, photo=buf)
+                print("Image forwarded OK")
+            except Exception as img_err:
+                print("Image forward error: " + repr(img_err))
+        else:
+            print("Skipping image — image_bytes is None")
 
         await bot.send_message(
             chat_id=CHANNEL_ID,
@@ -432,7 +517,7 @@ async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("✅ Опубліковано в основний", callback_data="done")
         ]]))
 
-        del PENDING_POSTS[msg_id]
+        delete_pending(msg_id)
         print("Forwarded: " + post_data.get("topic_name", "?") + (" clean" if clean else " with btn"))
 
     if data == "done":
@@ -452,11 +537,11 @@ async def publish_info_post(bot: Bot):
         keyboard = build_test_keyboard(topic["name"], with_consultation=False) if TEST_CHANNEL_ID else None
         msg = await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
         if TEST_CHANNEL_ID:
-            PENDING_POSTS[str(msg.message_id)] = {
+            save_pending(str(msg.message_id), {
                 "text": text, "with_button": False,
                 "topic_name": topic["name"], "image_bytes": image_bytes,
                 "poll_question": None, "poll_options": None,
-            }
+            })
         print("Info post OK")
     except Exception as e:
         print("Info post error: " + repr(e))
@@ -473,11 +558,11 @@ async def publish_grawe_post(bot: Bot):
         keyboard = build_test_keyboard(topic["name"], with_consultation=False) if TEST_CHANNEL_ID else None
         msg = await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
         if TEST_CHANNEL_ID:
-            PENDING_POSTS[str(msg.message_id)] = {
+            save_pending(str(msg.message_id), {
                 "text": text, "with_button": False,
                 "topic_name": topic["name"], "image_bytes": image_bytes,
                 "poll_question": None, "poll_options": None,
-            }
+            })
         print("GRAWE post OK")
     except Exception as e:
         print("GRAWE post error: " + repr(e))
@@ -497,11 +582,11 @@ async def publish_sales_post(bot: Bot):
             keyboard = build_main_keyboard(with_consultation=True)
         msg = await bot.send_message(chat_id=target, text=text, parse_mode="Markdown", reply_markup=keyboard)
         if TEST_CHANNEL_ID:
-            PENDING_POSTS[str(msg.message_id)] = {
+            save_pending(str(msg.message_id), {
                 "text": text, "with_button": True,
                 "topic_name": topic["name"], "image_bytes": image_bytes,
                 "poll_question": None, "poll_options": None,
-            }
+            })
         print("Sales post OK")
     except Exception as e:
         print("Sales post error: " + repr(e))
@@ -528,13 +613,13 @@ async def publish_weekly_poll(bot: Bot):
                 text="👆 Опитування тижня — переслати в основний?",
                 reply_markup=keyboard
             )
-            PENDING_POSTS[str(msg.message_id)] = {
+            save_pending(str(msg.message_id), {
                 "text": "👆 Опитування тижня",
                 "with_button": False, "topic_name": "poll",
                 "image_bytes": None,
                 "poll_question": poll["question"],
                 "poll_options": poll["options"],
-            }
+            })
         print("Poll OK")
     except Exception as e:
         print("Poll error: " + repr(e))
@@ -640,11 +725,11 @@ async def publish_news_post(bot: Bot, news_text, target):
     keyboard = build_test_keyboard("news", with_consultation=False) if TEST_CHANNEL_ID else None
     msg_out = await bot.send_message(chat_id=target, text=post_text, parse_mode="Markdown", reply_markup=keyboard)
     if TEST_CHANNEL_ID:
-        PENDING_POSTS[str(msg_out.message_id)] = {
+        save_pending(str(msg_out.message_id), {
             "text": post_text, "with_button": False,
             "topic_name": "news", "image_bytes": image_bytes,
             "poll_question": None, "poll_options": None,
-        }
+        })
     print("News post OK")
 
 async def check_and_publish_news(bot: Bot):
@@ -686,11 +771,11 @@ async def handle_test_channel_post(update: Update, context: ContextTypes.DEFAULT
             message_id=msg.message_id,
             reply_markup=keyboard
         )
-        PENDING_POSTS[msg_id] = {
+        save_pending(msg_id, {
             "text": text, "with_button": True,
             "topic_name": "manual", "image_bytes": None,
             "poll_question": None, "poll_options": None,
-        }
+        })
         print("Buttons added to manual post: " + msg_id)
     except Exception as e:
         print("Manual post buttons error: " + repr(e))
